@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Naqqash - Hand Cricket Live</title>
+  
+  <!-- PWA & Android Meta Tags -->
+  <meta name="theme-color" content="#f59e0b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Naqqash" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="tiger-logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- Socket.io Standalone Client Bundled for Offline & APK -->
+  <script src="socket.io.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <img src="tiger-logo.svg" alt="Naqqash Tiger" class="logo-img" />
+      <div class="app-title-wrap">
+        <h1>NAQQASH</h1>
+        <span>Hand Cricket Live</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <!-- Back / Leave Room Button -->
+      <button id="backBtn" class="icon-btn" style="display: none; background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; color: #fca5a5; font-size: 0.75rem; width: auto; padding: 4px 10px; border-radius: 12px; font-weight: 800; gap: 4px;" title="Back to Lobby">
+        <span>🔙</span> <span>BACK</span>
+      </button>
+      <div id="connStatusPill" class="room-badge" style="border-color: #f59e0b; color: #fbbf24; font-size: 0.7rem; padding: 3px 8px;">
+        <span style="font-size: 0.6rem;">●</span> <span id="connStatusText">CONNECTING...</span>
+      </div>
+      <div id="roomBadge" class="room-badge" style="display: none;">
+        <span>ROOM:</span> <b id="roomCodeDisplay">-----</b>
+      </div>
+      <button id="serverConfigBtn" class="icon-btn" title="Server Settings">⚙️</button>
+      <button id="soundToggleBtn" class="icon-btn" title="Toggle Sound">🔊</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+
+    <!-- PWA Install Banner -->
+    <div id="installBanner" class="install-banner" style="display: none;">
+      <div class="install-text">📱 <b>Naqqash Game APK:</b> Install to Phone Home Screen!</div>
+      <button id="installAppBtn" class="install-btn">INSTALL APP</button>
+    </div>
+
+    <!-- VIEW 1: LOBBY & JOIN SCREEN -->
+    <section id="lobbyView" class="stadium-card">
+      <div class="hero-banner">
+        <img src="tiger-logo.svg" alt="Naqqash Tiger Logo" class="hero-logo" />
+        <h2 class="hero-title">NAQQASH</h2>
+        <p class="hero-sub">Multiplayer Hand Cricket for Cousins & Live Spectators</p>
+        <div id="lobbyConnBanner" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; font-size: 0.78rem; font-weight: 800; color: #fbbf24; margin: 8px 0;">
+          <span style="font-size: 0.7rem;">●</span> <span id="lobbyConnText">Connecting to Server... 🟡</span>
+          <button id="quickFixServerBtn" type="button" style="display: none; background: rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color: #fde68a; border-radius: 8px; padding: 3px 8px; font-size: 0.7rem; font-weight: 800; cursor: pointer;">⚙️ Change Server Link</button>
+        </div>
+        <a href="Naqqash.apk" download="Naqqash-HandCricket.apk" style="display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 25px; font-size: 0.85rem; font-weight: 800; border: 1px solid #6ee7b7; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+          <span>📥 DOWNLOAD ANDROID APK</span>
+        </a>
+      </div>
+
+      <!-- Tabs: Create Room vs Join Room vs Pass & Play -->
+      <div class="tab-row">
+        <button id="tabCreate" class="tab-btn active">CREATE ROOM</button>
+        <button id="tabJoin" class="tab-btn">JOIN ROOM</button>
+        <button id="tabOffline" class="tab-btn" style="color: var(--accent-cyan);">PASS & PLAY 📱</button>
+      </div>
+
+      <!-- Player Name -->
+      <div class="form-group">
+        <label class="form-label">Your Name (آپ کا نام):</label>
+        <input type="text" id="playerNameInput" class="form-input" placeholder="e.g. Naqqash, Hamza, Ali..." maxlength="15" />
+      </div>
+
+      <!-- Create Room Section -->
+      <div id="createSection">
+        <div class="form-group">
+          <label class="form-label">Team 1 Name (پہلی ٹیم):</label>
+          <input type="text" id="team1NameInput" class="form-input" value="Naqqash Tigers 🐯" maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team 2 Name (دوسری ٹیم):</label>
+          <input type="text" id="team2NameInput" class="form-input" value="Cousins XI 🏏" maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Overs per Innings (اوورز):</label>
+          <select id="oversSelect" class="form-input">
+            <option value="1">1 Over (Super Over)</option>
+            <option value="2" selected>2 Overs Match (Quick)</option>
+            <option value="3">3 Overs Match</option>
+            <option value="5">5 Overs Match</option>
+            <option value="6">6 Overs Match</option>
+            <option value="10">10 Overs Match (T10)</option>
+            <option value="15">15 Overs Match</option>
+            <option value="20">20 Overs Match (T20 Clash 🔥)</option>
+          </select>
+        </div>
+        <button id="createRoomBtn" class="btn-primary">
+          <span>CREATE MATCH ROOM</span> 🚀
+        </button>
+      </div>
+
+      <!-- Join Room Section -->
+      <div id="joinSection" style="display: none;">
+        <div class="form-group">
+          <label class="form-label">Room Code (5 Alphabets):</label>
+          <input type="text" id="roomCodeInput" class="form-input" placeholder="e.g. TIGER" maxlength="5" style="text-transform: uppercase; font-size: 1.2rem; letter-spacing: 3px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Select Your Role / Team:</label>
+          <div class="role-selector">
+            <div id="roleTeam1" class="role-opt selected" data-role="team1">Team 1 🏏</div>
+            <div id="roleTeam2" class="role-opt" data-role="team2">Team 2 🏏</div>
+            <div id="roleSpec" class="role-opt spec" data-role="spectator">Watch Live 👀</div>
+          </div>
+        </div>
+        <button id="joinRoomBtn" class="btn-primary">
+          <span>ENTER ROOM</span> 🎯
+        </button>
+      </div>
+
+      <!-- Offline Pass & Play Section (2 Players on 1 Mobile) -->
+      <div id="offlineSection" style="display: none;">
+        <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 10px; margin-bottom: 12px; font-size: 0.8rem; color: #bae6fd;">
+          📱 <b>Pass & Play:</b> Play with your cousin right on this single phone! No Wi-Fi or server needed.
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team 1 Name:</label>
+          <input type="text" id="offT1Name" class="form-input" value="Naqqash Tigers 🐯" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team 2 Name:</label>
+          <input type="text" id="offT2Name" class="form-input" value="Cousin Kings 🏏" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Match Overs:</label>
+          <select id="offOvers" class="form-input">
+            <option value="1">1 Over (Super Over)</option>
+            <option value="2" selected>2 Overs</option>
+            <option value="3">3 Overs</option>
+            <option value="5">5 Overs</option>
+            <option value="10">10 Overs (T10)</option>
+            <option value="20">20 Overs (T20 🔥)</option>
+          </select>
+        </div>
+        <button id="startOfflineBtn" class="btn-primary">
+          <span>START PASS & PLAY MATCH</span> 🎮
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 2: WAITING ROOM LOBBY (Squads & Roles) -->
+    <section id="waitingRoomView" class="stadium-card" style="display: none;">
+      <div style="text-align: center; margin-bottom: 12px;">
+        <span style="font-size: 0.8rem; color: var(--accent-gold); font-weight: 800; letter-spacing: 1px;">MATCH LOBBY</span>
+        <h3 id="waitingRoomCode" style="font-size: 1.8rem; font-weight: 900; letter-spacing: 3px; color: #fff;">-----</h3>
+        <p style="font-size: 0.75rem; color: var(--text-muted);">Share this room code with your cousins to join!</p>
+      </div>
+
+      <!-- Teams Display -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+        <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 10px;">
+          <div style="font-size: 0.75rem; font-weight: 900; color: var(--accent-cyan); margin-bottom: 6px;" id="lobbyT1Name">Team 1</div>
+          <ul id="lobbyT1Players" style="list-style: none; font-size: 0.8rem;"></ul>
+          <button id="joinT1Btn" class="role-opt" style="width: 100%; margin-top: 8px; font-size: 0.7rem;">Join This Team</button>
+        </div>
+
+        <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 12px; padding: 10px;">
+          <div style="font-size: 0.75rem; font-weight: 900; color: var(--accent-rose); margin-bottom: 6px;" id="lobbyT2Name">Team 2</div>
+          <ul id="lobbyT2Players" style="list-style: none; font-size: 0.8rem;"></ul>
+          <button id="joinT2Btn" class="role-opt" style="width: 100%; margin-top: 8px; font-size: 0.7rem;">Join This Team</button>
+        </div>
+      </div>
+
+      <!-- Live Spectators List -->
+      <div style="background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: var(--accent-gold); font-weight: 700;">👀 Live Spectators:</span>
+          <button id="joinSpecBtn" style="background: none; border: 1px solid var(--accent-gold); color: var(--accent-gold); border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; cursor: pointer;">Switch to Spectator</button>
+        </div>
+        <div id="lobbySpectators" style="margin-top: 4px; color: var(--text-muted);">None yet</div>
+      </div>
+
+      <!-- Host Action: Toss -->
+      <button id="startTossBtn" class="btn-primary">
+        <span>START COIN TOSS 🪙</span>
+      </button>
+
+      <!-- Leave Room Button -->
+      <button id="leaveWaitingRoomBtn" class="role-opt" style="width: 100%; margin-top: 10px; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 0.8rem; padding: 10px;">
+        🔙 LEAVE ROOM (WAPIS LOBBY JAYEN)
+      </button>
+    </section>
+
+    <!-- VIEW 3: LIVE GAME ARENA -->
+    <section id="gameView" style="display: none;">
+      
+      <!-- Scoreboard -->
+      <div class="scoreboard">
+        <div class="scoreboard-header">
+          <span id="inningsBadge">INNINGS 1</span>
+          <span id="targetBadge" class="match-target-pill" style="display: none;">TARGET: 0</span>
+          <span id="oversBadge">OVERS: 0.0 / 2</span>
+        </div>
+
+        <div class="teams-grid">
+          <!-- Team 1 Box -->
+          <div id="sbTeam1Box" class="team-box batting">
+            <span class="team-badge-tag" id="sbT1Tag">BATTING</span>
+            <div class="team-name" id="sbT1Name">Naqqash Tigers</div>
+            <div class="team-score-big"><span id="sbT1Score">0</span>/<span id="sbT1Wickets">0</span></div>
+            <div class="team-overs-sub">Ov: <span id="sbT1Overs">0.0</span></div>
+          </div>
+
+          <div class="vs-col">VS</div>
+
+          <!-- Team 2 Box -->
+          <div id="sbTeam2Box" class="team-box bowling">
+            <span class="team-badge-tag" id="sbT2Tag">BOWLING</span>
+            <div class="team-name" id="sbT2Name">Cousins XI</div>
+            <div class="team-score-big"><span id="sbT2Score">0</span>/<span id="sbT2Wickets">0</span></div>
+            <div class="team-overs-sub">Ov: <span id="sbT2Overs">0.0</span></div>
+          </div>
+        </div>
+
+        <!-- Current Batsman & Bowler -->
+        <div class="current-players-bar">
+          <div class="player-item">
+            <span>🏏 Bat:</span> <strong id="curBatsmanName">Batsman</strong>
+            <span id="curBatsmanScore" style="color: var(--accent-cyan);">(0)</span>
+          </div>
+          <div class="player-item">
+            <span>⚾ Bowl:</span> <strong id="curBowlerName">Bowler</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pitch Arena with 2 Animated Hands -->
+      <div class="pitch-arena">
+        <div class="pitch-header">
+          <div class="side-label bat">
+            <span>🏏 BATSMAN</span>
+          </div>
+          <div style="color: var(--accent-gold); font-size: 0.75rem;" id="pitchStatus">READY FOR NEXT BALL</div>
+          <div class="side-label bowl">
+            <span>BOWLER ⚾</span>
+          </div>
+        </div>
+
+        <!-- Dual Hands Container -->
+        <div class="hands-container">
+          <!-- Left: Batsman Hand -->
+          <div class="hand-stage">
+            <div id="batsmanHandLabel" class="hand-player-name bat">🏏 Batsman</div>
+            <div id="batsmanHandSlot"></div>
+            <div id="batsmanStatusPill" class="hand-status-pill">Thinking...</div>
+          </div>
+
+          <!-- Right: Bowler Hand -->
+          <div class="hand-stage">
+            <div id="bowlerHandLabel" class="hand-player-name bowl">Bowler ⚾</div>
+            <div id="bowlerHandSlot"></div>
+            <div id="bowlerStatusPill" class="hand-status-pill">Thinking...</div>
+          </div>
+        </div>
+
+        <!-- Pop-in Ball Result Overlay -->
+        <div id="ballResultOverlay" class="ball-result-overlay" style="display: none;">
+          <div id="resultBadge" class="result-badge out">OUT! 🔴</div>
+          <div id="resultDetailText" class="result-detail-text">Both showed 4 fingers!</div>
+          <div id="nextBallTimer" class="next-ball-timer">Agli ball 4s mein...</div>
+        </div>
+      </div>
+
+      <!-- Controls Section (Only for active Batsman or Bowler) -->
+      <div id="controlsSection" class="controls-section">
+        <div class="controls-hint" id="turnInstruction">
+          👉 Your Turn! Tap your hand gesture below:
+        </div>
+
+        <div class="gestures-grid">
+          <!-- 1 Finger -->
+          <button class="gesture-btn" data-value="1">
+            <span class="emoji-icon">☝️</span>
+            <span class="number-tag">1 Run</span>
+          </button>
+          <!-- 2 Fingers -->
+          <button class="gesture-btn" data-value="2">
+            <span class="emoji-icon">✌️</span>
+            <span class="number-tag">2 Runs</span>
+          </button>
+          <!-- 3 Fingers -->
+          <button class="gesture-btn" data-value="3">
+            <span class="emoji-icon">🤟</span>
+            <span class="number-tag">3 Runs</span>
+          </button>
+          <!-- 4 Fingers -->
+          <button class="gesture-btn" data-value="4">
+            <span class="emoji-icon">🖖</span>
+            <span class="number-tag">4 Runs</span>
+          </button>
+          <!-- 5 Fingers -->
+          <button class="gesture-btn" data-value="5">
+            <span class="emoji-icon">🖐️</span>
+            <span class="number-tag">5 Runs</span>
+          </button>
+          <!-- 6 Fingers (Thumbs Up 👍) -->
+          <button class="gesture-btn six-btn" data-value="6">
+            <span class="emoji-icon">👍</span>
+            <span class="number-tag">6 SIX!</span>
+          </button>
+          <!-- 10 Fingers (Punch 👊) -->
+          <button class="gesture-btn ten-btn" data-value="10">
+            <span class="emoji-icon">👊</span>
+            <span class="number-tag">10 PUNCH!</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Spectator Watching Notice (If watching live) -->
+      <div id="spectatorNotice" class="controls-section" style="display: none; text-align: center; padding: 16px; background: rgba(0,0,0,0.5); border-radius: 14px;">
+        <div style="font-size: 1.2rem; font-weight: 900; color: var(--accent-gold); margin-bottom: 4px;">👀 WATCHING MATCH LIVE</div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);">You are in Spectator Mode! Sit back, cheer with emojis below and enjoy the clash!</div>
+      </div>
+
+      <!-- Live Spectator & Cheer Reaction Bar -->
+      <div class="spectator-bar">
+        <div class="spec-info">
+          <div class="pulse-red-dot"></div>
+          <span>LIVE WATCH (<span id="liveSpectatorCount">0</span>)</span>
+        </div>
+        <div class="reactions-group">
+          <button class="reaction-btn" data-emoji="🔥" title="Fire">🔥</button>
+          <button class="reaction-btn" data-emoji="👏" title="Clap">👏</button>
+          <button class="reaction-btn" data-emoji="🐯" title="Tiger">🐯</button>
+          <button class="reaction-btn" data-emoji="😱" title="Shock">😱</button>
+          <button class="reaction-btn" data-emoji="🏏" title="Cricket">🏏</button>
+        </div>
+      </div>
+
+      <!-- Online Squad & Live Viewers Card -->
+      <div id="liveViewersCard" class="stadium-card" style="margin-top: 10px; padding: 12px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.8rem; font-weight: 800; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+            <span>👥</span> <span>ONLINE PLAYERS & VIEWERS</span>
+          </span>
+          <span id="totalOnlineCountBadge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; padding: 2px 8px; border-radius: 10px; font-weight: 800;">
+            0 Online
+          </span>
+        </div>
+
+        <!-- Squads in match -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem; margin-bottom: 10px;">
+          <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 6px 8px;">
+            <div style="color: var(--accent-cyan); font-weight: 900; margin-bottom: 3px;" id="arenaT1Label">Team 1</div>
+            <ul id="arenaT1List" style="list-style: none; margin: 0; padding: 0; line-height: 1.4;"></ul>
+          </div>
+          <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; padding: 6px 8px;">
+            <div style="color: var(--accent-rose); font-weight: 900; margin-bottom: 3px;" id="arenaT2Label">Team 2</div>
+            <ul id="arenaT2List" style="list-style: none; margin: 0; padding: 0; line-height: 1.4;"></ul>
+          </div>
+        </div>
+
+        <!-- Live Spectators Watching List -->
+        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 8px; font-size: 0.75rem;">
+          <div style="color: var(--accent-gold); font-weight: 800; display: flex; align-items: center; gap: 4px; margin-bottom: 3px;">
+            <span>👀</span> <span>MATCH DEKHNE WALE (LIVE WATCHERS):</span>
+          </div>
+          <div id="arenaSpectatorsList" style="color: #f8fafc; font-weight: 600;">No spectators right now</div>
+        </div>
+      </div>
+
+      <!-- Live Commentary Box -->
+      <div class="commentary-box" id="commentaryFeed">
+        <div class="comm-line">🏟️ Match in progress. Enjoy Hand Cricket!</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: TOSS -->
+  <div id="tossModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <h3 style="color: var(--accent-gold); font-size: 1.3rem; margin-bottom: 8px;">🪙 MATCH TOSS</h3>
+      <p id="tossSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">Calling the coin flip...</p>
+
+      <!-- 3D Coin Stage -->
+      <div class="coin-stage">
+        <div id="coinInner" class="coin-inner">
+          <div class="coin-face front">🐯 HEADS</div>
+          <div class="coin-face back">🏏 TAILS</div>
+        </div>
+      </div>
+
+      <!-- Toss Choice Buttons -->
+      <div id="tossChoiceButtons" style="display: flex; gap: 10px; margin-top: 14px;">
+        <button id="callHeadsBtn" class="btn-primary" style="flex: 1;">HEADS (🐯)</button>
+        <button id="callTailsBtn" class="btn-primary" style="flex: 1; background: linear-gradient(135deg, #38bdf8, #0284c7); color: #fff;">TAILS (🏏)</button>
+      </div>
+
+      <!-- Decision Buttons (Bat or Bowl) -->
+      <div id="tossDecisionSection" style="display: none; margin-top: 14px;">
+        <p id="tossWinnerText" style="font-weight: 800; color: #fff; margin-bottom: 10px;"></p>
+        <div style="display: flex; gap: 10px;">
+          <button id="chooseBatBtn" class="btn-primary" style="flex: 1;">BAT FIRST 🏏</button>
+          <button id="chooseBowlBtn" class="btn-primary" style="flex: 1; background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff;">BOWL FIRST ⚾</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SERVER SETTINGS (For APK / Network play) -->
+  <div id="serverModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <h3 style="color: var(--accent-gold); font-size: 1.3rem; margin-bottom: 8px;">⚙️ SERVER SETTINGS</h3>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Enter Match Server IP address to connect with cousins:</p>
+      
+      <div class="form-group" style="text-align: left;">
+        <label class="form-label">Server IP / URL:</label>
+        <input type="text" id="customServerUrlInput" class="form-input" placeholder="http://192.168.10.12:3000" />
+      </div>
+
+      <!-- Quick Preset Buttons -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px;">
+        <button id="presetOnlineBtn" type="button" class="role-opt" style="font-size: 0.7rem; color: #38bdf8;">🌐 Preset: Online URL</button>
+        <button id="presetWifiBtn" type="button" class="role-opt" style="font-size: 0.7rem; color: #34d399;">📶 Preset: Wi-Fi IP</button>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-top: 10px;">
+        <button id="saveServerBtn" class="btn-primary" style="flex: 1;">SAVE & CONNECT</button>
+        <button id="closeServerModalBtn" class="role-opt" style="flex: 0.5;">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MATCH SUMMARY / GAME OVER -->
+  <div id="matchOverModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <img src="tiger-logo.svg" alt="Naqqash Tiger" style="width: 70px; height: 70px; margin: 0 auto 10px;" />
+      <h2 style="color: var(--accent-gold); font-size: 1.5rem; font-weight: 900; margin-bottom: 6px;">MATCH FINISHED!</h2>
+      <p id="matchSummaryText" style="font-size: 1.1rem; font-weight: 800; color: #fff; margin: 12px 0;"></p>
+      <button id="rematchBtn" class="btn-primary">
+        <span>PLAY REMATCH 🔄</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="hands.js"></script>
+  <script src="audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
