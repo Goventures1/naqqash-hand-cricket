@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: naqqash-hand-cricket
+    env: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install --production
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000

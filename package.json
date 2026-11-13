@@ -1,0 +1,30 @@
+{
+  "name": "naqqash-hand-cricket",
+  "version": "1.0.0",
+  "description": "Naqqash Hand Cricket - Multiplayer Android & Web Game for Cousins",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync",
+    "cap:build": "npx cap build android"
+  },
+  "keywords": [
+    "cricket",
+    "hand-cricket",
+    "multiplayer",
+    "naqqash"
+  ],
+  "author": "Naqqash",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.3",
+    "socket.io": "^4.8.4"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  }
+}
