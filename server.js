@@ -9,11 +9,15 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, rooms: rooms.size, uptime: Math.floor(process.uptime()) });
+  res.json({ ok: true, rooms: rooms.size, uptime: Math.floor(process.uptime()), platform: 'Naqqash Multi-Game Arena' });
 });
 
 app.get('/Naqqash.apk', (req, res) => {
   res.download(path.join(__dirname, 'Naqqash.apk'), 'Naqqash.apk');
+});
+
+app.get('/Naqqash-Cloud-Deploy.zip', (req, res) => {
+  res.download(path.join(__dirname, 'Naqqash-Hand-Cricket-Cloud.zip'), 'Naqqash-Cloud-Deploy.zip');
 });
 
 const server = http.createServer(app);
@@ -25,9 +29,65 @@ const io = new Server(server, {
   pingInterval: 25000
 });
 
-// Rooms State storage
-// Room code -> { code, hostId, team1: { name, players: [] }, team2: { name, players: [] }, spectators: [], settings: {...}, state: {...} }
+// Rooms Map: roomCode -> roomObject
 const rooms = new Map();
+
+// 30 distinct high-contrast vibrant colors for players
+const PLAYER_PALETTE = [
+  { name: 'Electric Cyan', hex: '#00f0ff', bg: 'rgba(0, 240, 255, 0.25)' },
+  { name: 'Neon Emerald', hex: '#10b981', bg: 'rgba(16, 185, 129, 0.25)' },
+  { name: 'Royal Purple', hex: '#a855f7', bg: 'rgba(168, 85, 247, 0.25)' },
+  { name: 'Sunset Amber', hex: '#f59e0b', bg: 'rgba(245, 158, 11, 0.25)' },
+  { name: 'Crimson Rose', hex: '#f43f5e', bg: 'rgba(244, 63, 94, 0.25)' },
+  { name: 'Vivid Blue', hex: '#3b82f6', bg: 'rgba(59, 130, 246, 0.25)' },
+  { name: 'Lime Volt', hex: '#84cc16', bg: 'rgba(132, 204, 22, 0.25)' },
+  { name: 'Hot Coral', hex: '#fb7185', bg: 'rgba(251, 113, 133, 0.25)' },
+  { name: 'Deep Indigo', hex: '#6366f1', bg: 'rgba(99, 102, 241, 0.25)' },
+  { name: 'Teal Flare', hex: '#14b8a6', bg: 'rgba(20, 184, 166, 0.25)' },
+  { name: 'Tangerine', hex: '#f97316', bg: 'rgba(249, 115, 22, 0.25)' },
+  { name: 'Magenta Pink', hex: '#ec4899', bg: 'rgba(236, 72, 153, 0.25)' },
+  { name: 'Bright Gold', hex: '#eab308', bg: 'rgba(234, 179, 8, 0.25)' },
+  { name: 'Mint Green', hex: '#34d399', bg: 'rgba(52, 211, 153, 0.25)' },
+  { name: 'Violet Beam', hex: '#c084fc', bg: 'rgba(192, 132, 252, 0.25)' },
+  { name: 'Sky Blue', hex: '#38bdf8', bg: 'rgba(56, 189, 248, 0.25)' },
+  { name: 'Ruby Flame', hex: '#ef4444', bg: 'rgba(239, 68, 68, 0.25)' },
+  { name: 'Aquamarine', hex: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.25)' },
+  { name: 'Copper Orange', hex: '#ea580c', bg: 'rgba(234, 88, 12, 0.25)' },
+  { name: 'Lavender', hex: '#d8b4fe', bg: 'rgba(216, 180, 254, 0.25)' },
+  { name: 'Spring Jade', hex: '#059669', bg: 'rgba(5, 150, 105, 0.25)' },
+  { name: 'Turquoise', hex: '#06b6d4', bg: 'rgba(6, 182, 212, 0.25)' },
+  { name: 'Cherry Red', hex: '#e11d48', bg: 'rgba(225, 29, 72, 0.25)' },
+  { name: 'Bright Yellow', hex: '#facc15', bg: 'rgba(250, 204, 21, 0.25)' },
+  { name: 'Royal Violet', hex: '#7c3aed', bg: 'rgba(124, 58, 237, 0.25)' },
+  { name: 'Ocean Cyan', hex: '#0284c7', bg: 'rgba(2, 132, 199, 0.25)' },
+  { name: 'Emerald Gem', hex: '#15803d', bg: 'rgba(21, 128, 61, 0.25)' },
+  { name: 'Bronze Gold', hex: '#d97706', bg: 'rgba(217, 119, 6, 0.25)' },
+  { name: 'Scarlet', hex: '#b91c1c', bg: 'rgba(185, 28, 28, 0.25)' },
+  { name: 'Cyber Blue', hex: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.25)' }
+];
+
+// Snake & Ladders Board Constants
+const SNAKE_LADDERS = {
+  4: 14,
+  9: 31,
+  20: 38,
+  28: 84,
+  40: 59,
+  51: 67,
+  63: 81,
+  71: 91
+};
+
+const SNAKE_SNAKES = {
+  17: 7,
+  54: 34,
+  62: 19,
+  64: 60,
+  87: 24,
+  93: 73,
+  95: 75,
+  99: 10 // THE GIANT 99 TITAN COBRA!
+};
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -38,56 +98,183 @@ function generateRoomCode() {
   return code;
 }
 
+// Format public room state for client consumption
 function getPublicRoomState(room) {
-  return {
+  if (!room) return null;
+  const base = {
     code: room.code,
     hostId: room.hostId,
-    team1: {
-      name: room.team1.name,
-      players: room.team1.players.map(p => ({ id: p.id, name: p.name, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })),
-      score: room.team1.score,
-      wickets: room.team1.wickets,
-      overs: room.team1.overs,
-      balls: room.team1.balls
-    },
-    team2: {
-      name: room.team2.name,
-      players: room.team2.players.map(p => ({ id: p.id, name: p.name, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })),
-      score: room.team2.score,
-      wickets: room.team2.wickets,
-      overs: room.team2.overs,
-      balls: room.team2.balls
-    },
-    spectators: room.spectators.map(s => ({ id: s.id, name: s.name })),
-    settings: room.settings,
-    gamePhase: room.gamePhase, // 'lobby', 'toss', 'playing', 'innings_break', 'match_over'
-    toss: room.toss,
-    currentInnings: room.currentInnings, // 1 or 2
-    battingTeamKey: room.battingTeamKey, // 'team1' or 'team2'
-    bowlingTeamKey: room.bowlingTeamKey, // 'team1' or 'team2'
-    target: room.target,
-    currentBatsmanIndex: room.currentBatsmanIndex,
-    currentBowlerIndex: room.currentBowlerIndex,
-    currentBatsman: room.currentBatsman,
-    currentBowler: room.currentBowler,
-    lastBallResult: room.lastBallResult,
-    hasBatPicked: room.pendingPicks ? !!room.pendingPicks.batMove : false,
-    hasBowlPicked: room.pendingPicks ? !!room.pendingPicks.bowlMove : false,
+    gameType: room.gameType || 'snake', // 'snake', 'cricket', 'ludo'
+    gamePhase: room.gamePhase, // 'lobby', 'playing', 'match_over', etc.
+    spectators: room.spectators.map(s => ({ id: s.id, name: s.name, avatar: s.avatar })),
     commentary: room.commentary || [],
-    winner: room.winner
+    createdAt: room.createdAt,
+    winner: room.winner,
+    lastLoser: room.lastLoser || null
   };
+
+  if (room.gameType === 'snake') {
+    base.snakeState = {
+      players: room.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        color: p.color,
+        position: p.position,
+        isLocked: p.isLocked,
+        hasFinished: p.hasFinished,
+        finishRank: p.finishRank,
+        totalRolls: p.totalRolls || 0,
+        laddersClimbed: p.laddersClimbed || 0,
+        snakesBitten: p.snakesBitten || 0,
+        hitGiant99: p.hitGiant99 || false
+      })),
+      turnIndex: room.snakeState ? room.snakeState.turnIndex : 0,
+      activePlayerId: room.snakeState ? getActiveSnakePlayerId(room) : null,
+      lastRoll: room.snakeState ? room.snakeState.lastRoll : null,
+      lastEvent: room.snakeState ? room.snakeState.lastEvent : null,
+      winners: room.snakeState ? room.snakeState.winners : [],
+      lastLoser: room.snakeState ? room.snakeState.lastLoser : null,
+      gameStartTime: room.snakeState ? room.snakeState.gameStartTime : null
+    };
+  } else if (room.gameType === 'ludo') {
+    base.ludoState = room.ludoState || null;
+  }
+
+  // Always include cricket fields so existing cricket clients don't crash
+  base.team1 = {
+    name: room.team1 ? room.team1.name : 'Team 1',
+    players: room.team1 ? room.team1.players.map(p => ({ id: p.id, name: p.name, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })) : [],
+    score: room.team1 ? room.team1.score : 0,
+    wickets: room.team1 ? room.team1.wickets : 0,
+    overs: room.team1 ? room.team1.overs : 0,
+    balls: room.team1 ? room.team1.balls : 0
+  };
+  base.team2 = {
+    name: room.team2 ? room.team2.name : 'Team 2',
+    players: room.team2 ? room.team2.players.map(p => ({ id: p.id, name: p.name, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })) : [],
+    score: room.team2 ? room.team2.score : 0,
+    wickets: room.team2 ? room.team2.wickets : 0,
+    overs: room.team2 ? room.team2.overs : 0,
+    balls: room.team2 ? room.team2.balls : 0
+  };
+  base.settings = room.settings || { maxOvers: 2, ballsPerOver: 6 };
+  base.toss = room.toss || null;
+  base.currentInnings = room.currentInnings || 1;
+  base.battingTeamKey = room.battingTeamKey || 'team1';
+  base.bowlingTeamKey = room.bowlingTeamKey || 'team2';
+  base.target = room.target || null;
+  base.currentBatsmanIndex = room.currentBatsmanIndex || 0;
+  base.currentBowlerIndex = room.currentBowlerIndex || 0;
+  base.currentBatsman = room.currentBatsman || null;
+  base.currentBowler = room.currentBowler || null;
+  base.lastBallResult = room.lastBallResult || null;
+  base.hasBatPicked = room.pendingPicks ? !!room.pendingPicks.batMove : false;
+  base.hasBowlPicked = room.pendingPicks ? !!room.pendingPicks.bowlMove : false;
+
+  return base;
 }
 
+function getActiveSnakePlayerId(room) {
+  if (!room.players || room.players.length === 0) return null;
+  const activePlayers = room.players.filter(p => !p.hasFinished);
+  if (activePlayers.length === 0) return null;
+  const idx = (room.snakeState.turnIndex || 0) % activePlayers.length;
+  return activePlayers[idx] ? activePlayers[idx].id : null;
+}
+
+function advanceSnakeTurn(room) {
+  const activePlayers = room.players.filter(p => !p.hasFinished);
+  if (activePlayers.length <= 1) {
+    // If 1 or 0 players left, game over!
+    if (activePlayers.length === 1) {
+      const loser = activePlayers[0];
+      loser.isLastLoser = true;
+      room.snakeState.lastLoser = {
+        id: loser.id,
+        name: loser.name,
+        avatar: loser.avatar,
+        color: loser.color
+      };
+      room.lastLoser = room.snakeState.lastLoser;
+      room.commentary.unshift(`💀 ${loser.name} is THE LAST LOSER! Better luck next time!`);
+    }
+    room.gamePhase = 'match_over';
+    return;
+  }
+  room.snakeState.turnIndex = (room.snakeState.turnIndex + 1) % activePlayers.length;
+}
+
+// Socket Connection
 io.on('connection', (socket) => {
   let userRoomCode = null;
   console.log(`⚡ [${new Date().toLocaleTimeString()}] Client connected: ${socket.id}`);
 
-  socket.on('create_room', ({ playerName, team1Name, team2Name, maxOvers }) => {
+  // Auto-recovery / Reconnect
+  socket.on('reconnect_session', ({ roomCode, previousSocketId, playerName }) => {
+    roomCode = (roomCode || '').toUpperCase().trim();
+    const room = rooms.get(roomCode);
+    if (!room) return socket.emit('error_msg', 'Session expired. Please join again.');
+
+    // Look for previous player
+    const existingPlayer = room.players ? room.players.find(p => p.id === previousSocketId) : null;
+    if (existingPlayer) {
+      existingPlayer.id = socket.id;
+      if (room.hostId === previousSocketId) room.hostId = socket.id;
+      userRoomCode = roomCode;
+      socket.join(roomCode);
+      socket.emit('reconnected_successfully', { room: getPublicRoomState(room), myId: socket.id });
+      io.to(roomCode).emit('room_updated', { room: getPublicRoomState(room) });
+      return;
+    }
+  });
+
+  // 1. CREATE ROOM (Supports 'snake', 'cricket', 'ludo')
+  socket.on('create_room', ({ playerName, gameType, team1Name, team2Name, maxOvers, avatar }) => {
     const code = generateRoomCode();
-    console.log(`🏠 [${new Date().toLocaleTimeString()}] Room CREATED: ${code} by ${playerName || 'Anonymous'}`);
+    gameType = (gameType || 'snake').toLowerCase();
+    const chosenAvatar = avatar || 'tiger';
+    const playerColor = PLAYER_PALETTE[0];
+
+    console.log(`🏠 Room CREATED: ${code} [${gameType.toUpperCase()}] by ${playerName || 'Anonymous'}`);
+
     const room = {
       code,
+      gameType, // 'snake', 'cricket', 'ludo'
       hostId: socket.id,
+      createdAt: Date.now(),
+      gamePhase: 'lobby',
+      commentary: [`Room created! Welcome to ${gameType === 'snake' ? 'Snake & Ladders' : (gameType === 'ludo' ? 'Ludo Classic' : 'Hand Cricket')}!`],
+      spectators: [],
+      winner: null,
+      lastLoser: null,
+      players: [
+        {
+          id: socket.id,
+          name: playerName || 'Player 1',
+          avatar: chosenAvatar,
+          color: playerColor,
+          position: 0, // 0 = locked in dugout
+          isLocked: true, // Needs a 1 to unlock!
+          hasFinished: false,
+          finishRank: null,
+          isLastLoser: false,
+          totalRolls: 0,
+          laddersClimbed: 0,
+          snakesBitten: 0,
+          hitGiant99: false
+        }
+      ],
+      // Snake & Ladders state
+      snakeState: {
+        turnIndex: 0,
+        lastRoll: null,
+        lastEvent: null,
+        winners: [],
+        lastLoser: null,
+        gameStartTime: null
+      },
+      // Hand Cricket preserved state
       team1: {
         name: team1Name || 'Naqqash Tigers 🐯',
         players: [{ id: socket.id, name: playerName || 'Player 1', score: 0, balls: 0, isOut: false }],
@@ -104,12 +291,10 @@ io.on('connection', (socket) => {
         balls: 0,
         overs: 0
       },
-      spectators: [],
       settings: {
-        maxOvers: parseInt(maxOvers) || 2, // 2 overs default, can be 1, 2, 5, etc.
+        maxOvers: parseInt(maxOvers) || 2,
         ballsPerOver: 6
       },
-      gamePhase: 'lobby',
       toss: null,
       currentInnings: 1,
       battingTeamKey: 'team1',
@@ -120,54 +305,253 @@ io.on('connection', (socket) => {
       currentBatsman: null,
       currentBowler: null,
       pendingPicks: { batMove: null, bowlMove: null },
-      lastBallResult: null,
-      commentary: ['Room created! Welcome to Naqqash Hand Cricket!'],
-      winner: null
+      lastBallResult: null
     };
 
     rooms.set(code, room);
     userRoomCode = code;
     socket.join(code);
 
-    socket.emit('room_created', { room: getPublicRoomState(room), myRole: 'team1' });
+    socket.emit('room_created', {
+      room: getPublicRoomState(room),
+      myRole: 'player',
+      myPlayerId: socket.id,
+      color: playerColor
+    });
   });
 
-  socket.on('join_room', ({ code, playerName, role }) => {
+  // 2. JOIN ROOM (Up to 30 players)
+  socket.on('join_room', ({ code, playerName, role, avatar }) => {
     code = (code || '').toUpperCase().trim();
-    console.log(`🚪 [${new Date().toLocaleTimeString()}] Join attempt: Room=${code}, Player=${playerName}, Role=${role}. Active rooms: [${Array.from(rooms.keys()).join(', ')}]`);
     const room = rooms.get(code);
 
     if (!room) {
-      console.log(`❌ [${new Date().toLocaleTimeString()}] Room NOT found: ${code}`);
       return socket.emit('error_msg', `Room "${code}" not found! Active rooms: [${Array.from(rooms.keys()).join(', ') || 'None'}]`);
+    }
+
+    if (room.players.length >= 30 && role !== 'spectator') {
+      return socket.emit('error_msg', 'Room is full (Maximum 30 players). You can join as a spectator!');
     }
 
     userRoomCode = code;
     socket.join(code);
 
-    const userObj = { id: socket.id, name: playerName || `Cousin ${Math.floor(Math.random() * 100)}` };
+    const chosenAvatar = avatar || 'lion';
+    const colorIdx = room.players.length % PLAYER_PALETTE.length;
+    const playerColor = PLAYER_PALETTE[colorIdx];
+    const userObj = {
+      id: socket.id,
+      name: playerName || `Cousin ${room.players.length + 1}`,
+      avatar: chosenAvatar,
+      color: playerColor,
+      position: 0,
+      isLocked: true,
+      hasFinished: false,
+      finishRank: null,
+      isLastLoser: false,
+      totalRolls: 0,
+      laddersClimbed: 0,
+      snakesBitten: 0,
+      hitGiant99: false
+    };
 
-    if (role === 'team1') {
-      room.team1.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
-    } else if (role === 'team2') {
-      room.team2.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
+    if (role === 'spectator') {
+      room.spectators.push({ id: socket.id, name: userObj.name, avatar: chosenAvatar });
     } else {
-      room.spectators.push(userObj);
-      role = 'spectator';
+      room.players.push(userObj);
+      // For Cricket support
+      if (room.gameType === 'cricket') {
+        if (role === 'team2' || room.team1.players.length > room.team2.players.length) {
+          room.team2.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
+        } else {
+          room.team1.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
+        }
+      }
     }
 
-    room.commentary.unshift(`👀 ${userObj.name} joined as ${role === 'spectator' ? 'Spectator' : (role === 'team1' ? room.team1.name : room.team2.name)}`);
+    room.commentary.unshift(`👋 ${userObj.name} joined the room!`);
     io.to(code).emit('room_updated', { room: getPublicRoomState(room) });
-    socket.emit('joined_successfully', { room: getPublicRoomState(room), myRole: role });
+    socket.emit('joined_successfully', {
+      room: getPublicRoomState(room),
+      myRole: role || 'player',
+      myPlayerId: socket.id,
+      color: playerColor
+    });
   });
 
+  // 3. START GAME (Host Only)
+  socket.on('start_game', () => {
+    if (!userRoomCode) return;
+    const room = rooms.get(userRoomCode);
+    if (!room || room.hostId !== socket.id) return;
+
+    if (room.gameType === 'snake') {
+      if (room.players.length < 1) {
+        return socket.emit('error_msg', 'Need at least 1 player to start!');
+      }
+      room.gamePhase = 'playing';
+      room.snakeState.turnIndex = 0;
+      room.snakeState.gameStartTime = Date.now();
+      room.commentary.unshift('🎲 Game started! Everyone is LOCKED! Roll a 1 to enter the board!');
+      io.to(userRoomCode).emit('snake_game_started', { room: getPublicRoomState(room) });
+    } else if (room.gameType === 'cricket') {
+      // Trigger Cricket Toss
+      room.gamePhase = 'toss';
+      room.toss = {
+        callingTeam: 'team2',
+        callingTeamName: room.team2.name,
+        coinState: 'flipping',
+        winnerKey: null,
+        decision: null
+      };
+      io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
+    }
+  });
+
+  // ========================================================
+  // SNAKE & LADDERS GAME ENGINE (SERVER-AUTHORITATIVE)
+  // ========================================================
+  socket.on('snake_roll_dice', () => {
+    if (!userRoomCode) return;
+    const room = rooms.get(userRoomCode);
+    if (!room || room.gameType !== 'snake' || room.gamePhase !== 'playing') return;
+
+    const activeId = getActiveSnakePlayerId(room);
+    if (activeId !== socket.id) {
+      return socket.emit('error_msg', 'It is not your turn to roll!');
+    }
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.hasFinished) return;
+
+    // Generate random roll 1-6
+    const roll = Math.floor(Math.random() * 6) + 1;
+    player.totalRolls = (player.totalRolls || 0) + 1;
+
+    let eventType = 'normal'; // 'unlocked', 'stay_locked', 'ladder', 'snake', 'giant_99', 'bounce', 'win'
+    let prevPos = player.position;
+    let newPos = prevPos;
+    let bannerMsg = '';
+
+    // RULE 1: PLAYER LOCK SYSTEM
+    if (player.isLocked) {
+      if (roll === 1) {
+        // UNLOCKED!
+        player.isLocked = false;
+        player.position = 1;
+        newPos = 1;
+        eventType = 'unlocked';
+        bannerMsg = `🎉 ${player.name} rolled a 1 and UNLOCKED! Token enters Square 1!`;
+        room.commentary.unshift(bannerMsg);
+      } else {
+        // REMAINS LOCKED
+        eventType = 'stay_locked';
+        bannerMsg = `🔒 ${player.name} rolled a ${roll}! Needs a 1 to unlock.`;
+        room.commentary.unshift(bannerMsg);
+      }
+    } else {
+      // PLAYER IS ACTIVE ON THE BOARD
+      const targetPos = player.position + roll;
+
+      if (targetPos > 100) {
+        // EXCEEDS 100: Stays in place!
+        eventType = 'bounce';
+        bannerMsg = `🎯 ${player.name} rolled a ${roll} but needs exact roll to reach 100! Stays at ${player.position}.`;
+        room.commentary.unshift(bannerMsg);
+      } else {
+        newPos = targetPos;
+        player.position = newPos;
+
+        // Check Ladder
+        if (SNAKE_LADDERS[newPos]) {
+          const ladderTop = SNAKE_LADDERS[newPos];
+          player.laddersClimbed = (player.laddersClimbed || 0) + 1;
+          eventType = 'ladder';
+          bannerMsg = `🪜 YAY! ${player.name} climbed a ladder from ${newPos} up to ${ladderTop}!`;
+          player.position = ladderTop;
+          newPos = ladderTop;
+          room.commentary.unshift(bannerMsg);
+        }
+        // Check Snake (Including Special Giant 99 Snake!)
+        else if (SNAKE_SNAKES[newPos]) {
+          const snakeTail = SNAKE_SNAKES[newPos];
+          player.snakesBitten = (player.snakesBitten || 0) + 1;
+
+          if (newPos === 99) {
+            // SPECIAL HUGE 99 TITAN SNAKE!
+            eventType = 'giant_99';
+            player.hitGiant99 = true;
+            bannerMsg = `🐍💀 OH NO! ${player.name} landed on SQUARE 99! THE GIANT TITAN COBRA swallowed them down to ${snakeTail}!`;
+          } else {
+            eventType = 'snake';
+            bannerMsg = `🐍 OUCH! ${player.name} got bitten by a snake at ${newPos} and slid down to ${snakeTail}!`;
+          }
+          player.position = snakeTail;
+          newPos = snakeTail;
+          room.commentary.unshift(bannerMsg);
+        }
+
+        // Check Exact 100: WINNER!
+        if (player.position === 100) {
+          player.hasFinished = true;
+          const rank = room.snakeState.winners.length + 1;
+          player.finishRank = rank;
+
+          const winObj = {
+            id: player.id,
+            name: player.name,
+            avatar: player.avatar,
+            color: player.color,
+            rank: rank,
+            totalRolls: player.totalRolls
+          };
+          room.snakeState.winners.push(winObj);
+
+          if (rank === 1) {
+            room.winner = winObj;
+            eventType = 'win';
+            bannerMsg = `🏆 CHAMPION! ${player.name} has reached 100 and WON 1st PLACE!`;
+          } else {
+            bannerMsg = `🎖️ ${player.name} finished in ${rank === 2 ? '2nd' : (rank === 3 ? '3rd' : `${rank}th`)} Place!`;
+          }
+          room.commentary.unshift(bannerMsg);
+        } else if (eventType === 'normal') {
+          bannerMsg = `🎲 ${player.name} rolled a ${roll} and moved to ${newPos}.`;
+          room.commentary.unshift(bannerMsg);
+        }
+      }
+    }
+
+    room.snakeState.lastRoll = {
+      playerId: player.id,
+      playerName: player.name,
+      roll,
+      prevPos,
+      newPos: player.position,
+      eventType,
+      bannerMsg
+    };
+    room.snakeState.lastEvent = eventType;
+
+    // Advance turn sequence to next active player
+    advanceSnakeTurn(room);
+
+    // Broadcast result & updated board state
+    io.to(userRoomCode).emit('snake_dice_rolled', {
+      rollResult: room.snakeState.lastRoll,
+      room: getPublicRoomState(room)
+    });
+  });
+
+  // ========================================================
+  // PRESERVED HAND CRICKET GAME ENGINE
+  // ========================================================
   socket.on('switch_role', ({ newRole }) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.gamePhase !== 'lobby') return;
 
     let userName = 'Cousin';
-    // Remove from existing
     const inT1 = room.team1.players.findIndex(p => p.id === socket.id);
     if (inT1 !== -1) {
       userName = room.team1.players[inT1].name;
@@ -200,24 +584,19 @@ io.on('connection', (socket) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.hostId !== socket.id) return;
-
     if (team1Name) room.team1.name = team1Name.trim();
     if (team2Name) room.team2.name = team2Name.trim();
     if (maxOvers) room.settings.maxOvers = parseInt(maxOvers) || 2;
-
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
-  // START TOSS
   socket.on('start_toss', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.hostId !== socket.id) return;
-
     if (room.team1.players.length === 0 || room.team2.players.length === 0) {
-      return socket.emit('error_msg', 'Both teams need at least 1 player to play!');
+      return socket.emit('error_msg', 'Both teams need at least 1 player to play cricket!');
     }
-
     room.gamePhase = 'toss';
     room.toss = {
       callingTeam: 'team2',
@@ -226,7 +605,6 @@ io.on('connection', (socket) => {
       winnerKey: null,
       decision: null
     };
-
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
@@ -234,7 +612,6 @@ io.on('connection', (socket) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.gamePhase !== 'toss') return;
-
     const tossResult = Math.random() < 0.5 ? 'heads' : 'tails';
     const won = choice === tossResult;
     const winnerKey = won ? 'team2' : 'team1';
@@ -253,7 +630,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('choose_toss_decision', ({ decision }) => { // 'bat' or 'bowl'
+  socket.on('choose_toss_decision', ({ decision }) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.gamePhase !== 'toss' || !room.toss.winnerKey) return;
@@ -274,325 +651,241 @@ io.on('connection', (socket) => {
     room.currentInnings = 1;
     room.currentBatsmanIndex = 0;
     room.currentBowlerIndex = 0;
-    updateActivePlayers(room);
+    updateCricketActivePlayers(room);
 
     room.commentary.unshift(`🏏 ${room[winnerKey].name} chose to ${decision.toUpperCase()} first! Match starting!`);
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
-  function updateActivePlayers(room) {
+  function updateCricketActivePlayers(room) {
     const batTeam = room[room.battingTeamKey];
     const bowlTeam = room[room.bowlingTeamKey];
-
-    // Find first batsman not out
     let bIdx = batTeam.players.findIndex(p => !p.isOut);
     if (bIdx === -1) bIdx = 0;
     room.currentBatsmanIndex = bIdx;
     room.currentBatsman = batTeam.players[bIdx] || null;
-
-    // Bowler rotates or stays
     room.currentBowlerIndex = room.currentBowlerIndex % (bowlTeam.players.length || 1);
     room.currentBowler = bowlTeam.players[room.currentBowlerIndex] || null;
   }
 
-  // PLAYER MOVE: 1, 2, 3, 4, 5, 6 (👍), 10 (👊)
   socket.on('play_move', ({ move }) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
-    if (!room || room.gamePhase !== 'playing' || room.isTransitioning) return;
+    if (!room || room.gameType !== 'cricket' || room.gamePhase !== 'playing') return;
 
-    move = parseInt(move);
-    if (![1, 2, 3, 4, 5, 6, 10].includes(move)) return;
+    const batTeam = room[room.battingTeamKey];
+    const bowlTeam = room[room.bowlingTeamKey];
+    const batsman = room.currentBatsman;
+    const bowler = room.currentBowler;
 
-    // Check if batsman or bowler
-    const isBatsman = room.currentBatsman && room.currentBatsman.id === socket.id;
-    const isBowler = room.currentBowler && room.currentBowler.id === socket.id;
+    const isBatsman = batsman && batsman.id === socket.id;
+    const isBowler = bowler && bowler.id === socket.id;
 
     if (!isBatsman && !isBowler) {
-      return; // Not your turn to play
+      return socket.emit('error_msg', 'Only active Batsman and Bowler can pick moves!');
     }
 
-    if (isBatsman) {
-      room.pendingPicks.batMove = move;
-    }
-    if (isBowler) {
-      room.pendingPicks.bowlMove = move;
-    }
+    if (!room.pendingPicks) room.pendingPicks = { batMove: null, bowlMove: null };
+    if (isBatsman) room.pendingPicks.batMove = move;
+    if (isBowler) room.pendingPicks.bowlMove = move;
 
-    // Notify room someone has locked their pick (without revealing what it is!)
     io.to(userRoomCode).emit('pick_locked', {
       hasBatPicked: !!room.pendingPicks.batMove,
       hasBowlPicked: !!room.pendingPicks.bowlMove
     });
 
-    // When both have picked -> REVEAL BALL!
     if (room.pendingPicks.batMove !== null && room.pendingPicks.bowlMove !== null) {
-      evaluateBall(room);
+      resolveCricketBall(room);
     }
   });
 
-  function evaluateBall(room) {
+  function resolveCricketBall(room) {
     const batMove = room.pendingPicks.batMove;
     const bowlMove = room.pendingPicks.bowlMove;
     const batTeam = room[room.battingTeamKey];
     const bowlTeam = room[room.bowlingTeamKey];
     const batsman = room.currentBatsman;
     const bowler = room.currentBowler;
-    const batsmanName = batsman ? batsman.name : 'Batsman';
-    const bowlerName = bowler ? bowler.name : 'Bowler';
 
-    // Reset pending
     room.pendingPicks = { batMove: null, bowlMove: null };
 
-    batTeam.balls++;
-    const ballsInOver = batTeam.balls % 6;
-    batTeam.overs = Math.floor(batTeam.balls / 6) + (ballsInOver / 10);
-    if (batsman) batsman.balls = (batsman.balls || 0) + 1;
-
-    let isOut = false;
-    let runsScored = 0;
+    const isOut = batMove === bowlMove;
+    let runs = 0;
     let commentaryMsg = '';
-    let pendingTransition = null;
 
-    if (batMove === bowlMove) {
-      // OUT!
-      isOut = true;
+    if (isOut) {
       batTeam.wickets++;
       if (batsman) batsman.isOut = true;
-
-      const outDesc = batMove === 6 ? 'THUMBS UP CAUGHT! 🔴' : (batMove === 10 ? 'PUNCH BLOCKED & BOWLED! 🔴' : 'OUT! 🔴');
-      commentaryMsg = `☝️ ${batsmanName} is OUT! ${batsmanName}: ${batMove}, ${bowlerName}: ${bowlMove} (${outDesc})`;
-
-      room.lastBallResult = {
-        batMove,
-        bowlMove,
-        batsmanName,
-        bowlerName,
-        isOut: true,
-        runs: 0,
-        text: 'OUT! 🔴'
-      };
-
-      // Check if all out
-      const remainingBatsmen = batTeam.players.filter(p => !p.isOut);
-      if (remainingBatsmen.length === 0) {
-        pendingTransition = () => handleInningsEnd(room, 'All out!');
-      } else {
-        // Next batsman
-        updateActivePlayers(room);
-      }
+      commentaryMsg = `🔴 OUT! Both picked ${batMove}! ${batsman ? batsman.name : 'Batsman'} is OUT!`;
     } else {
-      // RUNS SCORED
-      runsScored = batMove;
-      batTeam.score += runsScored;
-      if (batsman) batsman.score = (batsman.score || 0) + runsScored;
-
-      let cheerText = `+${runsScored} Runs`;
-      if (batMove === 6) cheerText = 'SIX! 👍 Huge Sixer!';
-      else if (batMove === 10) cheerText = 'SUPER PUNCH 10! 👊 Boom!';
-
-      commentaryMsg = `🏏 ${batsmanName} showed ${batMove}, ${bowlerName} showed ${bowlMove}. ${cheerText}`;
-
-      room.lastBallResult = {
-        batMove,
-        bowlMove,
-        batsmanName,
-        bowlerName,
-        isOut: false,
-        runs: runsScored,
-        text: cheerText
-      };
-
-      // Check if target chased in 2nd innings
-      if (room.currentInnings === 2 && room.target && batTeam.score >= room.target) {
-        pendingTransition = () => handleMatchEnd(room, `${batTeam.name} chased the target and WON the match! 🏆`);
+      runs = batMove;
+      batTeam.score += runs;
+      if (batsman) {
+        batsman.score = (batsman.score || 0) + runs;
+        batsman.balls = (batsman.balls || 0) + 1;
       }
+      commentaryMsg = runs === 6 ? `🔥 HUGE SIX! Thumbs up! +6 runs!` :
+                      runs === 10 ? `💥 MAXIMUM PUNCH! 10 RUNS BLAST!` :
+                      `⚡ ${batsman ? batsman.name : 'Batsman'} scored ${runs} run${runs > 1 ? 's' : ''}!`;
     }
 
+    batTeam.balls++;
+    if (batTeam.balls === 6) {
+      batTeam.overs++;
+      batTeam.balls = 0;
+      room.currentBowlerIndex++;
+    }
+
+    room.lastBallResult = { batMove, bowlMove, isOut, runs, batsmanName: batsman ? batsman.name : '', bowlerName: bowler ? bowler.name : '' };
     room.commentary.unshift(commentaryMsg);
 
-    // Check overs completion if not already transitioning
-    const maxBalls = room.settings.maxOvers * 6;
-    if (!pendingTransition && batTeam.balls >= maxBalls) {
-      pendingTransition = () => handleInningsEnd(room, `Overs completed (${room.settings.maxOvers} overs)!`);
-    }
+    const allOut = batTeam.wickets >= batTeam.players.length;
+    const oversDone = batTeam.overs >= room.settings.maxOvers;
 
-    // Bowler rotation every over if continuing
-    if (!pendingTransition && batTeam.balls % 6 === 0) {
-      room.currentBowlerIndex = (room.currentBowlerIndex + 1) % (bowlTeam.players.length || 1);
-      updateActivePlayers(room);
-      room.commentary.unshift(`🔄 End of Over ${Math.floor(batTeam.balls / 6)}! Bowler changed.`);
-    }
-
-    if (pendingTransition) {
-      room.isTransitioning = true;
-    }
-
-    // ALWAYS reveal the hands of this ball first so everyone sees who picked what!
-    io.to(room.code).emit('ball_completed', {
-      room: getPublicRoomState(room),
-      result: room.lastBallResult
-    });
-
-    if (pendingTransition) {
-      setTimeout(() => {
-        if (!rooms.has(room.code)) return;
-        room.isTransitioning = false;
-        pendingTransition();
-      }, 2800);
-    }
-  }
-
-  function handleInningsEnd(room, reason) {
     if (room.currentInnings === 1) {
-      room.gamePhase = 'innings_break';
-      room.target = room[room.battingTeamKey].score + 1;
-      room.commentary.unshift(`🔔 Innings 1 Over (${reason})! Target: ${room.target} runs for ${room[room.bowlingTeamKey].name}!`);
-
-      io.to(room.code).emit('innings_ended', {
-        room: getPublicRoomState(room),
-        target: room.target
-      });
-
-      // Switch batting & bowling after brief break
-      setTimeout(() => {
-        if (!rooms.has(room.code)) return;
-        const oldBatKey = room.battingTeamKey;
-        room.battingTeamKey = room.bowlingTeamKey;
-        room.bowlingTeamKey = oldBatKey;
+      if (allOut || oversDone) {
+        room.target = batTeam.score + 1;
         room.currentInnings = 2;
-        room.gamePhase = 'playing';
+        const temp = room.battingTeamKey;
+        room.battingTeamKey = room.bowlingTeamKey;
+        room.bowlingTeamKey = temp;
         room.currentBatsmanIndex = 0;
         room.currentBowlerIndex = 0;
-        updateActivePlayers(room);
-        room.commentary.unshift(`🚀 2nd Innings Started! Need ${room.target} runs to win!`);
-        io.to(room.code).emit('room_updated', { room: getPublicRoomState(room) });
-      }, 4000);
-    } else {
-      // 2nd innings ended
-      const batTeam = room[room.battingTeamKey];
-      const bowlTeam = room[room.bowlingTeamKey];
-      if (batTeam.score >= room.target) {
-        handleMatchEnd(room, `${batTeam.name} WON by ${batTeam.players.length - batTeam.wickets} wickets! 🏆`);
-      } else if (batTeam.score === room.target - 1) {
-        handleMatchEnd(room, `MATCH TIED! 🤝 What an incredible thriller!`);
+        updateCricketActivePlayers(room);
+        room.commentary.unshift(`🏁 Innings 1 Over! Target is ${room.target} runs!`);
       } else {
-        const diff = (room.target - 1) - batTeam.score;
-        handleMatchEnd(room, `${bowlTeam.name} WON by ${diff} runs! 🏆`);
+        if (isOut) updateCricketActivePlayers(room);
+      }
+    } else {
+      // Innings 2: Chase
+      const chaseWon = batTeam.score >= room.target;
+      if (chaseWon) {
+        room.gamePhase = 'match_over';
+        room.winner = { name: batTeam.name, key: room.battingTeamKey, margin: `${batTeam.players.length - batTeam.wickets} wickets` };
+        room.commentary.unshift(`🏆 ${batTeam.name} WON THE MATCH by chasing the target!`);
+      } else if (allOut || oversDone) {
+        room.gamePhase = 'match_over';
+        if (batTeam.score === room.target - 1) {
+          room.winner = { name: 'MATCH TIED!', key: 'tie' };
+          room.commentary.unshift(`🤝 MATCH TIED! Both teams scored equal runs!`);
+        } else {
+          room.winner = { name: bowlTeam.name, key: room.bowlingTeamKey, margin: `${(room.target - 1) - batTeam.score} runs` };
+          room.commentary.unshift(`🏆 ${bowlTeam.name} WON THE MATCH by defending the target!`);
+        }
+      } else {
+        if (isOut) updateCricketActivePlayers(room);
       }
     }
-  }
 
-  function handleMatchEnd(room, summary) {
-    room.gamePhase = 'match_over';
-    room.winner = summary;
-    room.commentary.unshift(`🏁 MATCH FINISHED: ${summary}`);
-    io.to(room.code).emit('match_finished', {
-      room: getPublicRoomState(room),
-      summary
+    io.to(room.code).emit('ball_completed', {
+      result: room.lastBallResult,
+      room: getPublicRoomState(room)
     });
   }
 
-  // LIVE REACTIONS / EMOJIS (from spectators or players)
+  // Reactions / Live Chat
   socket.on('send_reaction', ({ emoji, senderName }) => {
     if (!userRoomCode) return;
-    io.to(userRoomCode).emit('live_reaction', {
-      emoji: emoji || '🔥',
-      senderName: senderName || 'Cousin'
-    });
+    io.to(userRoomCode).emit('live_reaction', { emoji, senderName });
   });
 
-  // LEAVE ROOM (Back button)
-  socket.on('leave_room', () => {
-    if (!userRoomCode) return;
-    const room = rooms.get(userRoomCode);
-    socket.leave(userRoomCode);
-    const prevCode = userRoomCode;
-    userRoomCode = null;
-
-    if (!room) return;
-    let leaverName = 'A user';
-    const p1 = room.team1.players.find(p => p.id === socket.id);
-    const p2 = room.team2.players.find(p => p.id === socket.id);
-    const spec = room.spectators.find(s => s.id === socket.id);
-    if (p1) leaverName = p1.name;
-    else if (p2) leaverName = p2.name;
-    else if (spec) leaverName = spec.name;
-
-    room.team1.players = room.team1.players.filter(p => p.id !== socket.id);
-    room.team2.players = room.team2.players.filter(p => p.id !== socket.id);
-    room.spectators = room.spectators.filter(s => s.id !== socket.id);
-
-    if (room.team1.players.length === 0 && room.team2.players.length === 0 && room.spectators.length === 0) {
-      rooms.delete(prevCode);
-    } else {
-      if (room.hostId === socket.id) {
-        const nextUser = room.team1.players[0] || room.team2.players[0] || room.spectators[0];
-        if (nextUser) room.hostId = nextUser.id;
-      }
-      room.commentary.unshift(`🚪 ${leaverName} left the match.`);
-      io.to(prevCode).emit('room_updated', { room: getPublicRoomState(room) });
-    }
-  });
-
-  // REMATCH / RESTART
+  // Rematch / Restart Match
   socket.on('restart_match', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.hostId !== socket.id) return;
 
-    // Reset scores & players status
-    room.team1.score = 0;
-    room.team1.wickets = 0;
-    room.team1.balls = 0;
-    room.team1.overs = 0;
-    room.team1.players.forEach(p => { p.score = 0; p.balls = 0; p.isOut = false; });
-
-    room.team2.score = 0;
-    room.team2.wickets = 0;
-    room.team2.balls = 0;
-    room.team2.overs = 0;
-    room.team2.players.forEach(p => { p.score = 0; p.balls = 0; p.isOut = false; });
-
-    room.target = null;
-    room.isTransitioning = false;
     room.gamePhase = 'lobby';
-    room.toss = null;
     room.winner = null;
-    room.lastBallResult = null;
-    room.pendingPicks = { batMove: null, bowlMove: null };
-    room.commentary.unshift('🔄 Match reset for a new game!');
+    room.lastLoser = null;
+
+    if (room.gameType === 'snake') {
+      room.players.forEach(p => {
+        p.position = 0;
+        p.isLocked = true;
+        p.hasFinished = false;
+        p.finishRank = null;
+        p.isLastLoser = false;
+        p.totalRolls = 0;
+        p.laddersClimbed = 0;
+        p.snakesBitten = 0;
+        p.hitGiant99 = false;
+      });
+      room.snakeState = {
+        turnIndex: 0,
+        lastRoll: null,
+        lastEvent: null,
+        winners: [],
+        lastLoser: null,
+        gameStartTime: null
+      };
+      room.commentary.unshift('🔄 Room reset for a new Snake & Ladders race!');
+    } else if (room.gameType === 'cricket') {
+      room.team1.score = 0;
+      room.team1.wickets = 0;
+      room.team1.balls = 0;
+      room.team1.overs = 0;
+      room.team1.players.forEach(p => { p.score = 0; p.balls = 0; p.isOut = false; });
+      room.team2.score = 0;
+      room.team2.wickets = 0;
+      room.team2.balls = 0;
+      room.team2.overs = 0;
+      room.team2.players.forEach(p => { p.score = 0; p.balls = 0; p.isOut = false; });
+      room.target = null;
+      room.toss = null;
+      room.lastBallResult = null;
+      room.pendingPicks = { batMove: null, bowlMove: null };
+      room.commentary.unshift('🔄 Cricket match reset for a new match!');
+    }
 
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
-  // DISCONNECT
+  // Leave room
+  socket.on('leave_room', () => {
+    if (!userRoomCode) return;
+    const room = rooms.get(userRoomCode);
+    if (!room) return;
+    const prevCode = userRoomCode;
+    userRoomCode = null;
+    socket.leave(prevCode);
+
+    room.players = room.players.filter(p => p.id !== socket.id);
+    room.team1.players = room.team1.players.filter(p => p.id !== socket.id);
+    room.team2.players = room.team2.players.filter(p => p.id !== socket.id);
+    room.spectators = room.spectators.filter(s => s.id !== socket.id);
+
+    if (room.players.length === 0 && room.spectators.length === 0) {
+      rooms.delete(prevCode);
+    } else {
+      if (room.hostId === socket.id) {
+        const nextUser = room.players[0] || room.spectators[0];
+        if (nextUser) room.hostId = nextUser.id;
+      }
+      io.to(prevCode).emit('room_updated', { room: getPublicRoomState(room) });
+    }
+  });
+
+  // Disconnect
   socket.on('disconnect', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room) return;
 
-    // Remove user
-    room.team1.players = room.team1.players.filter(p => p.id !== socket.id);
-    room.team2.players = room.team2.players.filter(p => p.id !== socket.id);
-    room.spectators = room.spectators.filter(s => s.id !== socket.id);
-
-    // If room is empty, delete
-    if (room.team1.players.length === 0 && room.team2.players.length === 0 && room.spectators.length === 0) {
-      rooms.delete(userRoomCode);
-    } else {
-      // Reassign host if host left
-      if (room.hostId === socket.id) {
-        const nextUser = room.team1.players[0] || room.team2.players[0] || room.spectators[0];
-        if (nextUser) room.hostId = nextUser.id;
+    // Grace period for reconnect (keep player in list for temporary reloads)
+    // If room is empty, delete after 60s
+    setTimeout(() => {
+      const activeSockets = io.sockets.adapter.rooms.get(userRoomCode);
+      if (!activeSockets || activeSockets.size === 0) {
+        rooms.delete(userRoomCode);
+        console.log(`🧹 Room ${userRoomCode} cleaned up (all disconnected).`);
       }
-      io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
-    }
+    }, 60000);
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🐅 NAQQASH Hand Cricket Server is running on port ${PORT}`);
-  console.log(`👉 Access on local network: http://localhost:${PORT}`);
+  console.log(`👑 NAQQASH Multi-Game Platform running on port ${PORT}`);
+  console.log(`👉 Access locally: http://localhost:${PORT}`);
 });

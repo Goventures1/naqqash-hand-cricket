@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Naqqash Arena - Multiplayer Family Gaming Platform</title>
+  
+  <!-- PWA & Android Meta Tags -->
+  <meta name="theme-color" content="#07090e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Naqqash Arena" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="tiger-logo.svg" />
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- Socket.io Standalone Client Bundled for Offline & APK -->
+  <script src="socket.io.min.js"></script>
+</head>
+<body>
+
+  <!-- ========================================================
+       TOP NAVIGATION HEADER
+       ======================================================== -->
+  <header class="app-header">
+    <div class="brand-wrap" id="headerHomeBtn">
+      <div class="brand-icon">🎮</div>
+      <div class="brand-text">
+        <h1>NAQQASH</h1>
+        <span>Family Arena</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Back / Leave Room Button -->
+      <button id="backBtn" class="header-btn" style="display: none; border-color: #ef4444; color: #f87171;">
+        <span>🔙</span> <span>LEAVE</span>
+      </button>
+
+      <!-- Active Room Pill -->
+      <div id="roomBadge" class="status-pill" style="display: none; background: rgba(0, 240, 255, 0.1); border-color: var(--accent-cyan); color: var(--accent-cyan);">
+        <span>ROOM:</span> <b id="roomCodeDisplay">-----</b>
+      </div>
+
+      <!-- Server Status Indicator -->
+      <div id="connStatusPill" class="status-pill">
+        <span style="font-size: 8px;">●</span> <span id="connStatusText">ONLINE</span>
+      </div>
+
+      <!-- Audio Mute Toggle -->
+      <button id="soundToggleBtn" class="header-btn" title="Toggle Sound">🔊</button>
+
+      <!-- Server Config -->
+      <button id="serverConfigBtn" class="header-btn" title="Server Settings">⚙️</button>
+    </div>
+  </header>
+
+  <!-- ========================================================
+       MAIN APPLICATION WRAPPER
+       ======================================================== -->
+  <main class="main-wrapper">
+
+    <!-- PWA Install Banner -->
+    <div id="installBanner" class="profile-card" style="display: none; border-color: var(--accent-cyan); margin-bottom: 20px;">
+      <div>
+        <h4 style="font-size: 0.95rem;">📱 Install Naqqash Arena App</h4>
+        <p style="font-size: 0.8rem; color: var(--text-muted);">Add to home screen for fast fullscreen multiplayer!</p>
+      </div>
+      <button id="installAppBtn" class="btn-primary-play" style="width: auto; padding: 8px 16px; font-size: 0.8rem;">INSTALL</button>
+    </div>
+
+    <!-- ========================================================
+         VIEW 0: MAIN HOME SCREEN - GAME SELECTION
+         ======================================================== -->
+    <section id="homeScreen" class="view-section active">
+      <div class="home-hero">
+        <div class="home-badge">⚡ Real-Time Family Gaming</div>
+        <h2>CHOOSE YOUR GAME</h2>
+        <p>Play live multiplayer with cousins & family across mobile, tablet, and PC. Up to 30 players in private rooms!</p>
+      </div>
+
+      <!-- Player Profile & Quick Code Bar -->
+      <div class="profile-card">
+        <div class="profile-left">
+          <div id="profileAvatarBtn" class="avatar-selector-btn" title="Click to change avatar">
+            <span id="currentAvatarEmoji">🐯</span>
+          </div>
+          <div class="name-input-group">
+            <label>Player Name (آپ کا نام)</label>
+            <input type="text" id="playerNameInput" class="name-input" placeholder="Your Name..." maxlength="15" />
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <input type="text" id="quickRoomCodeInput" class="name-input" placeholder="Enter Room Code..." style="text-transform: uppercase; width: 140px; letter-spacing: 2px; text-align: center;" maxlength="5" />
+          <button id="quickJoinBtn" class="header-btn" style="border-color: var(--accent-cyan); color: var(--accent-cyan); padding: 9px 16px;">
+            JOIN ROOM 🚀
+          </button>
+        </div>
+      </div>
+
+      <!-- Games Selection Cards Grid -->
+      <div class="games-grid">
+
+        <!-- GAME 1: SNAKE & LADDERS (The Royal 100) -->
+        <div class="game-card card-snake">
+          <div class="card-top">
+            <div class="game-icon-badge">🐍</div>
+            <div class="player-capacity-badge">UP TO 30 PLAYERS</div>
+          </div>
+          <h3>SNAKE & LADDERS</h3>
+          <p>Classic 10×10 board game. Every player starts locked and must roll a 1 to enter! Beware the colossal Titan Cobra at square 99!</p>
+          <div class="feature-tags">
+            <span class="feature-tag">🔒 Lock-on-1 Rule</span>
+            <span class="feature-tag">⚠️ 99 Titan Snake</span>
+            <span class="feature-tag">💀 The Last Loser</span>
+            <span class="feature-tag">🎲 3D Dice</span>
+          </div>
+          <button id="playSnakeBtn" class="btn-primary-play">
+            <span>PLAY SNAKE & LADDERS</span> ➔
+          </button>
+        </div>
+
+        <!-- GAME 2: HAND CRICKET (Tigers Arena) -->
+        <div class="game-card card-cricket">
+          <div class="card-top">
+            <div class="game-icon-badge">🏏</div>
+            <div class="player-capacity-badge">TEAMS & 1v1</div>
+          </div>
+          <h3>HAND CRICKET</h3>
+          <p>The iconic desi batting vs bowling battle. Pick 1-5 fingers, 6 thumbs-up, or 10 punch. Match bowling number for an instant OUT!</p>
+          <div class="feature-tags">
+            <span class="feature-tag">🖐️ Animated Hands</span>
+            <span class="feature-tag">👊 10 Runs Punch</span>
+            <span class="feature-tag">👀 Live Spectator</span>
+            <span class="feature-tag">🪙 Toss Simulation</span>
+          </div>
+          <button id="playCricketBtn" class="btn-primary-play">
+            <span>PLAY HAND CRICKET</span> ➔
+          </button>
+        </div>
+
+        <!-- GAME 3: LUDO CLASSIC (Empire of Dice) -->
+        <div class="game-card card-ludo">
+          <div class="card-top">
+            <div class="game-icon-badge">🎲</div>
+            <div class="player-capacity-badge">2-4 PLAYERS</div>
+          </div>
+          <h3>LUDO CLASSIC</h3>
+          <p>The legendary cross-and-circle board game. Roll a 6 to bring tokens out, capture opponent tokens, and race to the central home!</p>
+          <div class="feature-tags">
+            <span class="feature-tag">🔴 Red / 🟢 Green</span>
+            <span class="feature-tag">⭐ Safe Star Squares</span>
+            <span class="feature-tag">⚔️ Token Capturing</span>
+          </div>
+          <button id="playLudoBtn" class="btn-primary-play">
+            <span>PLAY LUDO</span> ➔
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Quick Actions Footer -->
+      <div class="home-footer-actions">
+        <a href="Naqqash.apk" download="Naqqash.apk" class="footer-action-link" style="border-color: #10b981; color: #34d399;">
+          <span>📥</span> <span>DOWNLOAD ANDROID APK</span>
+        </a>
+        <button id="offlineModeBtn" class="footer-action-link">
+          <span>📱</span> <span>PASS & PLAY (OFFLINE)</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 1: ROOM LOBBY / WAITING ROOM
+         ======================================================== -->
+    <section id="roomLobbyView" class="view-section">
+      <div class="waiting-room-card">
+        <div class="waiting-header">
+          <div>
+            <span id="lobbyGameBadge" class="player-capacity-badge">SNAKE & LADDERS</span>
+            <h3 style="font-size: 1.4rem; margin-top: 6px;">MATCH WAITING ROOM</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Share room code with cousins to join!</p>
+          </div>
+
+          <div class="room-code-box">
+            <span>ROOM CODE:</span>
+            <div id="lobbyRoomCode" class="room-code-display">-----</div>
+            <button id="copyInviteLinkBtn" class="copy-btn">COPY LINK 📋</button>
+          </div>
+        </div>
+
+        <!-- Cricket Specific: Team Switcher -->
+        <div id="cricketLobbyTeams" style="display: none; margin-bottom: 24px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="sb-team-box" style="text-align: center;">
+              <h4 id="lobbyTeam1Title" style="color: var(--accent-cyan);">Naqqash Tigers 🐯</h4>
+              <div id="lobbyTeam1List" style="margin: 10px 0; font-size: 0.85rem; min-height: 40px;"></div>
+              <button id="joinTeam1Btn" class="header-btn" style="width: 100%; border-color: var(--accent-cyan); color: var(--accent-cyan);">JOIN TEAM 1</button>
+            </div>
+            <div class="sb-team-box" style="text-align: center;">
+              <h4 id="lobbyTeam2Title" style="color: #f87171;">Challengers 🏏</h4>
+              <div id="lobbyTeam2List" style="margin: 10px 0; font-size: 0.85rem; min-height: 40px;"></div>
+              <button id="joinTeam2Btn" class="header-btn" style="width: 100%; border-color: #ef4444; color: #f87171;">JOIN TEAM 2</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Universal Players Grid (Up to 30 players) -->
+        <div class="players-grid-section">
+          <h4>CONNECTED PLAYERS (<span id="connectedPlayersCount">1</span> / 30)</h4>
+          <div id="lobbyPlayersGrid" class="lobby-players-grid"></div>
+        </div>
+
+        <!-- Host Actions -->
+        <div class="lobby-actions">
+          <div id="lobbyWaitingNote" style="font-size: 0.85rem; color: var(--text-muted);">
+            ⏳ Waiting for host to start the game...
+          </div>
+          <button id="startMatchBtn" class="btn-primary-play" style="width: auto; padding: 12px 28px; display: none;">
+            <span>START GAME 🚀</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 2: SNAKE & LADDERS ARENA
+         ======================================================== -->
+    <section id="snakeGameView" class="view-section">
+      <!-- Live Game Event Banner -->
+      <div id="snakeEventBanner" class="profile-card" style="border-color: var(--accent-cyan); margin-bottom: 16px; padding: 12px 20px; display: flex; align-items: center; justify-content: center; text-align: center;">
+        <span id="snakeEventText" style="font-size: 0.95rem; font-weight: 800; color: #ffffff;">
+          🎲 Game started! All players start LOCKED! Roll a 1 to enter!
+        </span>
+      </div>
+
+      <div class="snake-arena-layout">
+        <!-- Main Board Column -->
+        <div class="board-container-card">
+          <!-- 10x10 Vector Board -->
+          <div id="snakeBoardMount" style="width: 100%; display: flex; justify-content: center;"></div>
+
+          <!-- Controls Deck & 3D Dice -->
+          <div class="dice-controls-card">
+            <div class="turn-announcer">
+              <div class="turn-title" id="snakeTurnTitle">CURRENT TURN</div>
+              <div class="turn-player-tag">
+                <div id="snakeTurnAvatar" class="turn-avatar-badge">🐯</div>
+                <div id="snakeTurnName" class="turn-name">Player 1</div>
+              </div>
+            </div>
+
+            <!-- 3D Interactive CSS Dice -->
+            <div class="dice-scene">
+              <div id="snake3DDice" class="cube">
+                <div class="cube-face face-1"><div class="pip"></div></div>
+                <div class="cube-face face-2"><div class="pip"></div><div class="pip"></div></div>
+                <div class="cube-face face-3"><div class="pip"></div><div class="pip"></div><div class="pip"></div></div>
+                <div class="cube-face face-4"><div class="pip"></div><div class="pip"></div><div class="pip"></div><div class="pip"></div></div>
+                <div class="cube-face face-5"><div class="pip"></div><div class="pip"></div><div class="pip"></div><div class="pip"></div><div class="pip"></div></div>
+                <div class="cube-face face-6"><div class="pip"></div><div class="pip"></div><div class="pip"></div><div class="pip"></div><div class="pip"></div><div class="pip"></div></div>
+              </div>
+            </div>
+
+            <!-- Roll Button -->
+            <button id="snakeRollBtn" class="btn-roll-dice">
+              <span>ROLL DICE 🎲</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sidebar: Dugout & Leaderboard Column -->
+        <div class="snake-sidebar">
+          <!-- 1. LOCKED DUGOUT (Must roll 1) -->
+          <div class="sidebar-panel">
+            <div class="panel-title-wrap">
+              <span class="panel-title">🔒 LOCKED DUGOUT</span>
+              <span id="snakeLockedCount" class="player-capacity-badge">0 LOCKED</span>
+            </div>
+            <div id="snakeLockedList" class="dugout-cards-list"></div>
+          </div>
+
+          <!-- 2. LIVE RACE LEADERBOARD -->
+          <div class="sidebar-panel">
+            <div class="panel-title-wrap">
+              <span class="panel-title">🏁 LIVE RACE LEADERBOARD</span>
+              <span class="player-capacity-badge" style="color: #facc15;">SQ. 100 WIN</span>
+            </div>
+            <div id="snakeLeaderboardList" class="leaderboard-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 3: HAND CRICKET ARENA (PRESERVED & RESTYLED)
+         ======================================================== -->
+    <section id="cricketGameView" class="view-section">
+      <div class="cricket-card">
+        <!-- Scoreboard Strip -->
+        <div class="scoreboard-strip">
+          <div id="cricketT1Box" class="sb-team-box active-team">
+            <h4 id="cricketT1Name">Naqqash Tigers 🐯</h4>
+            <div style="font-size: 1.8rem; font-weight: 900; margin: 4px 0;">
+              <span id="cricketT1Score">0</span> / <span id="cricketT1Wickets">0</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">
+              Overs: <span id="cricketT1Overs">0.0</span> / <span id="cricketMaxOvers">2</span>
+            </div>
+          </div>
+
+          <div id="cricketT2Box" class="sb-team-box">
+            <h4 id="cricketT2Name">Challengers 🏏</h4>
+            <div style="font-size: 1.8rem; font-weight: 900; margin: 4px 0;">
+              <span id="cricketT2Score">0</span> / <span id="cricketT2Wickets">0</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">
+              Target: <span id="cricketTarget">---</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toss View (If Toss Phase) -->
+        <div id="cricketTossSection" style="display: none; text-align: center; margin: 20px 0;">
+          <h3 style="color: var(--accent-gold); margin-bottom: 8px;">🪙 MATCH TOSS</h3>
+          <p id="cricketTossPrompt" style="color: var(--text-muted); font-size: 0.9rem;">Calling the coin toss...</p>
+          <div id="cricketTossButtons" style="display: flex; justify-content: center; gap: 12px; margin-top: 14px;">
+            <button id="callHeadsBtn" class="btn-primary-play" style="width: auto; padding: 10px 20px;">CALL HEADS</button>
+            <button id="callTailsBtn" class="btn-primary-play" style="width: auto; padding: 10px 20px;">CALL TAILS</button>
+          </div>
+          <div id="cricketTossDecisionButtons" style="display: none; justify-content: center; gap: 12px; margin-top: 14px;">
+            <button id="chooseBatBtn" class="btn-primary-play" style="width: auto; padding: 10px 20px; background: #38bdf8;">BAT FIRST 🏏</button>
+            <button id="chooseBowlBtn" class="btn-primary-play" style="width: auto; padding: 10px 20px; background: #f87171;">BOWL FIRST ⚾</button>
+          </div>
+        </div>
+
+        <!-- 2 Animated Hands Stage -->
+        <div id="cricketHandsStage" class="hands-stage">
+          <div style="text-align: center;">
+            <div style="font-size: 0.75rem; font-weight: 800; color: #38bdf8; margin-bottom: 6px;">
+              BATSMAN: <span id="cricketBatsmanName">Player 1</span>
+            </div>
+            <div id="batsmanHandMount" style="width: 140px; height: 160px;"></div>
+          </div>
+
+          <div style="font-size: 1.5rem; font-weight: 900; color: var(--text-muted);">VS</div>
+
+          <div style="text-align: center;">
+            <div style="font-size: 0.75rem; font-weight: 800; color: #f87171; margin-bottom: 6px;">
+              BOWLER: <span id="cricketBowlerName">Player 2</span>
+            </div>
+            <div id="bowlerHandMount" style="width: 140px; height: 160px;"></div>
+          </div>
+        </div>
+
+        <!-- Pick Move Buttons (1-5, 6 Thumbs-Up, 10 Punch) -->
+        <div id="cricketPickSection">
+          <div style="text-align: center; font-size: 0.85rem; font-weight: 800; color: var(--accent-cyan); margin-bottom: 10px;" id="cricketPickStatus">
+            PICK YOUR RUNS GESTURE:
+          </div>
+          <div class="runs-picker-grid">
+            <button class="run-btn" data-val="1">1 Finger</button>
+            <button class="run-btn" data-val="2">2 Fingers</button>
+            <button class="run-btn" data-val="3">3 Fingers</button>
+            <button class="run-btn" data-val="4">4 Fingers</button>
+            <button class="run-btn" data-val="5">5 Fingers</button>
+            <button class="run-btn" data-val="6" style="border-color: #f59e0b; color: #fde68a;">👍 6 (Thumbs)</button>
+            <button class="run-btn" data-val="10" style="border-color: #ef4444; color: #fca5a5; grid-column: span 2;">👊 10 (PUNCH!)</button>
+          </div>
+        </div>
+
+        <!-- Commentary Box -->
+        <div style="margin-top: 20px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 16px;">
+          <div style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">LIVE COMMENTARY</div>
+          <div id="cricketCommentaryText" style="font-size: 0.88rem; font-weight: 700; color: #ffffff;">Welcome to Hand Cricket!</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ========================================================
+       RESULTS MODAL (WINNER PODIUM & THE LAST LOSER 💀)
+       ======================================================== -->
+  <div id="gameResultsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content results-modal">
+      <div style="font-size: 2.5rem; margin-bottom: 8px;">🏆</div>
+      <h3 id="resultsGameTitle" style="font-size: 1.6rem; font-weight: 900;">MATCH FINISHED</h3>
+      <p id="resultsGameSub" style="font-size: 0.85rem; color: var(--text-muted);">Final Results & Leaderboard</p>
+
+      <!-- Winners Podium -->
+      <div id="resultsPodium" class="results-podium"></div>
+
+      <!-- THE LAST LOSER 💀 SPOTLIGHT CARD -->
+      <div id="lastLoserCard" class="last-loser-card" style="display: none;">
+        <div class="loser-skull">💀</div>
+        <div class="loser-title">THE LAST LOSER</div>
+        <div id="lastLoserName" class="loser-name">Player Name</div>
+        <div class="loser-sub">Never gave up, but took last place! Better luck next match!</div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <button id="playAgainBtn" class="btn-primary-play" style="flex: 1;">PLAY AGAIN 🔄</button>
+        <button id="returnHomeBtn" class="header-btn" style="flex: 0.6; padding: 12px; justify-content: center;">HOME 🏠</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL: AVATAR PICKER
+       ======================================================== -->
+  <div id="avatarModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 360px;">
+      <div class="modal-header">
+        <h3>CHOOSE YOUR AVATAR</h3>
+        <button id="closeAvatarModalBtn" class="close-btn">&times;</button>
+      </div>
+      <div id="avatarPickerGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px;"></div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL: ROOM CREATION
+       ======================================================== -->
+  <div id="createRoomModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="createModalTitle">CREATE ROOM</h3>
+        <button id="closeCreateModalBtn" class="close-btn">&times;</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Your Name</label>
+        <input type="text" id="modalPlayerNameInput" class="form-input" placeholder="Your Name..." maxlength="15" />
+      </div>
+
+      <!-- Cricket Options -->
+      <div id="cricketCreateOptions" style="display: none;">
+        <div class="form-group">
+          <label class="form-label">Team 1 Name</label>
+          <input type="text" id="team1NameInput" class="form-input" value="Naqqash Tigers 🐯" maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team 2 Name</label>
+          <input type="text" id="team2NameInput" class="form-input" value="Challengers 🏏" maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Overs per Innings</label>
+          <select id="oversSelect" class="form-input">
+            <option value="1">1 Over (Super Over)</option>
+            <option value="2" selected>2 Overs Match (Quick)</option>
+            <option value="3">3 Overs Match</option>
+            <option value="5">5 Overs Match</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="confirmCreateRoomBtn" class="btn-primary-play" style="margin-top: 12px;">
+        CREATE & INVITE COUSINS 🚀
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL: SERVER CONFIG (Render Cloud)
+       ======================================================== -->
+  <div id="serverModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>⚙️ SERVER SETTINGS</h3>
+        <button id="closeServerModalBtn" class="close-btn">&times;</button>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">24/7 Cloud Match Server URL:</p>
+      <div class="form-group">
+        <input type="text" id="customServerUrlInput" class="form-input" value="https://naqqash-hand-cricket.onrender.com" />
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button id="saveServerBtn" class="btn-primary-play" style="flex: 1;">SAVE & CONNECT</button>
+        <button id="resetServerBtn" class="header-btn" style="flex: 0.6; justify-content: center;">RESET DEFAULT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="audio.js"></script>
+  <script src="hands.js"></script>
+  <script src="snake.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
