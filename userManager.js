@@ -136,10 +136,10 @@ class UserManager {
     return { success: true, user: newUser };
   }
 
-  // Naqqash Admin: Give / Allot coins
-  allotCoins(requesterUsername, { targetUsername, amount }) {
+  // Naqqash Admin: Give / Allot / Deduct coins (Kam ya Ziada)
+  allotCoins(requesterUsername, { targetUsername, amount, action = 'add' }) {
     if ((requesterUsername || '').toLowerCase() !== 'naqqash') {
-      return { success: false, error: 'Unauthorized! Only Admin Naqqash can allot coins.' };
+      return { success: false, error: 'Unauthorized! Only Admin Naqqash can allot/deduct coins.' };
     }
 
     targetUsername = (targetUsername || '').trim().toLowerCase();
@@ -148,14 +148,72 @@ class UserManager {
       return { success: false, error: `User "${targetUsername}" not found!` };
     }
 
-    const coinsToAdd = parseInt(amount);
-    if (isNaN(coinsToAdd)) {
+    const val = parseInt(amount);
+    if (isNaN(val)) {
       return { success: false, error: 'Invalid coin amount' };
     }
 
-    u.coins = Math.max(0, (u.coins || 0) + coinsToAdd);
+    if (action === 'deduct') {
+      // Kam karna
+      u.coins = Math.max(0, (u.coins || 0) - Math.abs(val));
+    } else if (action === 'set') {
+      // Direct set
+      u.coins = Math.max(0, val);
+    } else {
+      // Ziada karna (default add)
+      if (val < 0) {
+        u.coins = Math.max(0, (u.coins || 0) + val);
+      } else {
+        u.coins = (u.coins || 0) + val;
+      }
+    }
+
     this.save();
     return { success: true, username: u.username, newCoins: u.coins };
+  }
+
+  // Naqqash Admin: Delete / Remove User
+  deleteUser(requesterUsername, targetUsername) {
+    if ((requesterUsername || '').toLowerCase() !== 'naqqash') {
+      return { success: false, error: 'Unauthorized! Only Admin Naqqash can remove users.' };
+    }
+
+    targetUsername = (targetUsername || '').trim().toLowerCase();
+    if (targetUsername === 'naqqash') {
+      return { success: false, error: 'Cannot delete Super Admin Naqqash!' };
+    }
+
+    if (!this.users.has(targetUsername)) {
+      return { success: false, error: `User "${targetUsername}" does not exist!` };
+    }
+
+    this.users.delete(targetUsername);
+    this.save();
+    return { success: true, deletedUsername: targetUsername, allUsers: this.getAllUsers('naqqash') };
+  }
+
+  // Public Global Leaderboard (Everyone can see everyone's stats and scores)
+  getPublicLeaderboard() {
+    return Array.from(this.users.values()).map(u => ({
+      username: u.username,
+      role: u.role || 'player',
+      coins: u.coins || 0,
+      stats: u.stats || {
+        matchesPlayed: 0,
+        matchesWon: 0,
+        matchesLost: 0,
+        cricketRuns: 0,
+        cricketWickets: 0,
+        snakeWins: 0,
+        ludoWins: 0
+      }
+    })).sort((a, b) => {
+      // Sort by matches won first, then coins
+      const aWins = (a.stats && a.stats.matchesWon) || 0;
+      const bWins = (b.stats && b.stats.matchesWon) || 0;
+      if (bWins !== aWins) return bWins - aWins;
+      return (b.coins || 0) - (a.coins || 0);
+    });
   }
 
   // Get user details
@@ -175,6 +233,40 @@ class UserManager {
     }
     this.save();
     return u.coins;
+  }
+
+  // Transfer coins directly between loser and winner
+  transferCoins(fromUsername, toUsername, amount) {
+    fromUsername = (fromUsername || '').trim().toLowerCase();
+    toUsername = (toUsername || '').trim().toLowerCase();
+    amount = Math.max(0, parseInt(amount) || 0);
+
+    const fromUser = this.users.get(fromUsername);
+    const toUser = this.users.get(toUsername);
+
+    if (!fromUser || !toUser || amount <= 0) {
+      return { success: false, error: 'Invalid transfer details' };
+    }
+
+    const actualAmount = Math.min(fromUser.coins || 0, amount);
+    fromUser.coins = Math.max(0, (fromUser.coins || 0) - actualAmount);
+    toUser.coins = (toUser.coins || 0) + actualAmount;
+
+    if (!fromUser.stats) fromUser.stats = {};
+    if (!toUser.stats) toUser.stats = {};
+
+    fromUser.stats.coinsLost = (fromUser.stats.coinsLost || 0) + actualAmount;
+    toUser.stats.coinsWon = (toUser.stats.coinsWon || 0) + actualAmount;
+
+    this.save();
+    return {
+      success: true,
+      from: fromUser.username,
+      to: toUser.username,
+      amount: actualAmount,
+      fromNewCoins: fromUser.coins,
+      toNewCoins: toUser.coins
+    };
   }
 
   // Record game stats

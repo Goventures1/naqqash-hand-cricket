@@ -210,68 +210,214 @@ function advanceSnakeTurn(room) {
   room.snakeState.turnIndex = (room.snakeState.turnIndex + 1) % activePlayers.length;
 }
 
-// Distribute Bet Pot to Winners
+// Forfeit Handler: If a player leaves/disconnects during an active match
+function handlePlayerForfeit(room, leaverSocketId) {
+  if (!room || (room.gamePhase !== 'playing' && room.gamePhase !== 'toss')) return false;
+
+  const leaver = room.players.find(p => p.id === leaverSocketId);
+  if (!leaver) return false;
+
+  const remainingPlayers = room.players.filter(p => p.id !== leaverSocketId && !p.hasFinished);
+  if (remainingPlayers.length === 0) return false;
+
+  const winner = remainingPlayers[0];
+  const stake = room.betAmount || 0;
+  const transfers = [];
+
+  if (stake > 0 && leaver.username && winner.username) {
+    const res = userManager.transferCoins(leaver.username, winner.username, stake);
+    if (res.success) {
+      transfers.push({
+        fromName: leaver.name,
+        fromUsername: leaver.username,
+        toName: winner.name,
+        toUsername: winner.username,
+        amount: res.amount
+      });
+      io.emit('user_coins_changed', { username: leaver.username, coins: res.fromNewCoins });
+      io.emit('user_coins_changed', { username: winner.username, coins: res.toNewCoins });
+    }
+  }
+
+  if (leaver.username) userManager.recordMatch(leaver.username, { gameType: room.gameType, won: false });
+  if (winner.username) userManager.recordMatch(winner.username, { gameType: room.gameType, won: true });
+
+  room.gamePhase = 'match_over';
+  room.winner = {
+    name: winner.name,
+    username: winner.username,
+    id: winner.id,
+    reason: `${leaver.name} left the match (Forfeit)!`
+  };
+  room.lastLoser = {
+    name: leaver.name,
+    username: leaver.username,
+    id: leaver.id,
+    reason: 'Forfeit / Left Match'
+  };
+
+  const commentaryMsg = `⚠️ ${leaver.name} left the game! ${winner.name} WINS BY FORFEIT! ${stake > 0 ? `💰 ${stake} coins transferred to ${winner.name}!` : ''}`;
+  room.commentary.unshift(commentaryMsg);
+
+  io.to(room.code).emit('room_updated', { room: getPublicRoomState(room) });
+  io.to(room.code).emit('coin_transfer_event', {
+    transfers,
+    reason: 'forfeit',
+    leaverName: leaver.name,
+    winnerName: winner.name,
+    commentary: commentaryMsg
+  });
+
+  return true;
+}
+
+// Distribute Bet Stake directly from Losers to Winners
 function distributeMatchPot(room) {
-  if (!room.pot || room.pot <= 0) return;
+  const stake = room.betAmount || 0;
+  const transfers = [];
 
   if (room.gameType === 'cricket') {
     if (!room.winner || room.winner.key === 'tie') {
-      // Refund bet to everyone
-      const allPlayers = [...room.team1.players, ...room.team2.players];
-      const refund = Math.floor(room.pot / Math.max(1, allPlayers.length));
-      allPlayers.forEach(p => {
-        if (p.username) userManager.adjustCoins(p.username, refund);
-      });
-      room.commentary.unshift(`💰 Match tied! Coins refunded to all players.`);
+      room.commentary.unshift(`🤝 Match tied! No coins transferred.`);
     } else {
-      // Winning team divides pot equally!
       const winTeam = room[room.winner.key];
-      if (winTeam && winTeam.players.length > 0) {
-        const sharePerPlayer = Math.floor(room.pot / winTeam.players.length);
-        winTeam.players.forEach(p => {
-          if (p.username) {
-            userManager.adjustCoins(p.username, sharePerPlayer);
-            userManager.recordMatch(p.username, { gameType: 'cricket', won: true });
+      const loseTeamKey = room.winner.key === 'team1' ? 'team2' : 'team1';
+      const loseTeam = room[loseTeamKey];
+
+      if (winTeam && loseTeam && stake > 0) {
+        const winUsers = winTeam.players.filter(p => p.username);
+        const loseUsers = loseTeam.players.filter(p => p.username);
+
+        if (winUsers.length === 1 && loseUsers.length === 1) {
+          const res = userManager.transferCoins(loseUsers[0].username, winUsers[0].username, stake);
+          if (res.success) {
+            transfers.push({
+              fromName: loseUsers[0].name,
+              fromUsername: loseUsers[0].username,
+              toName: winUsers[0].name,
+              toUsername: winUsers[0].username,
+              amount: res.amount
+            });
+            io.emit('user_coins_changed', { username: loseUsers[0].username, coins: res.fromNewCoins });
+            io.emit('user_coins_changed', { username: winUsers[0].username, coins: res.toNewCoins });
           }
-        });
-        const losingKey = room.winner.key === 'team1' ? 'team2' : 'team1';
-        const loseTeam = room[losingKey];
-        if (loseTeam) {
-          loseTeam.players.forEach(p => {
-            if (p.username) userManager.recordMatch(p.username, { gameType: 'cricket', won: false });
+        } else if (winUsers.length > 0 && loseUsers.length > 0) {
+          const totalLost = loseUsers.length * stake;
+          const share = Math.floor(totalLost / winUsers.length);
+          loseUsers.forEach(lp => {
+            userManager.adjustCoins(lp.username, -stake);
+            io.emit('user_coins_changed', { username: lp.username, coins: userManager.getUser(lp.username).coins });
+          });
+          winUsers.forEach(wp => {
+            userManager.adjustCoins(wp.username, share);
+            io.emit('user_coins_changed', { username: wp.username, coins: userManager.getUser(wp.username).coins });
+            transfers.push({
+              fromName: loseTeam.name,
+              fromUsername: 'Team',
+              toName: wp.name,
+              toUsername: wp.username,
+              amount: share
+            });
           });
         }
-        room.commentary.unshift(`💰 ${winTeam.name} members won ${sharePerPlayer} coins each from the pot!`);
       }
     }
   } else if (room.gameType === 'snake') {
-    // 1st place winner takes all coins!
     const champ = room.snakeState.winners && room.snakeState.winners[0];
-    if (champ) {
+    if (champ && stake > 0) {
       const winnerPlayer = room.players.find(p => p.id === champ.id);
+      const losers = room.players.filter(p => p.id !== champ.id);
+
       if (winnerPlayer && winnerPlayer.username) {
-        userManager.adjustCoins(winnerPlayer.username, room.pot);
-        userManager.recordMatch(winnerPlayer.username, { gameType: 'snake', won: true });
-        room.commentary.unshift(`💰 1st Place Winner ${winnerPlayer.name} takes the entire pot of ${room.pot} coins!`);
+        losers.forEach(lp => {
+          if (lp.username) {
+            const res = userManager.transferCoins(lp.username, winnerPlayer.username, stake);
+            if (res.success) {
+              transfers.push({
+                fromName: lp.name,
+                fromUsername: lp.username,
+                toName: winnerPlayer.name,
+                toUsername: winnerPlayer.username,
+                amount: res.amount
+              });
+              io.emit('user_coins_changed', { username: lp.username, coins: res.fromNewCoins });
+              io.emit('user_coins_changed', { username: winnerPlayer.username, coins: res.toNewCoins });
+            }
+          }
+        });
       }
-      room.players.forEach(p => {
-        if (p.username && (!winnerPlayer || p.username !== winnerPlayer.username)) {
-          userManager.recordMatch(p.username, { gameType: 'snake', won: false });
-        }
-      });
     }
   } else if (room.gameType === 'ludo') {
-    if (room.ludoState && room.ludoState.winner) {
+    if (room.ludoState && room.ludoState.winner && stake > 0) {
       const winnerPlayer = room.players.find(p => p.id === room.ludoState.winner.id);
+      const losers = room.players.filter(p => p.id !== room.ludoState.winner.id);
+
       if (winnerPlayer && winnerPlayer.username) {
-        userManager.adjustCoins(winnerPlayer.username, room.pot);
-        userManager.recordMatch(winnerPlayer.username, { gameType: 'ludo', won: true });
-        room.commentary.unshift(`💰 Ludo Champion ${winnerPlayer.name} takes the pot of ${room.pot} coins!`);
+        losers.forEach(lp => {
+          if (lp.username) {
+            const res = userManager.transferCoins(lp.username, winnerPlayer.username, stake);
+            if (res.success) {
+              transfers.push({
+                fromName: lp.name,
+                fromUsername: lp.username,
+                toName: winnerPlayer.name,
+                toUsername: winnerPlayer.username,
+                amount: res.amount
+              });
+              io.emit('user_coins_changed', { username: lp.username, coins: res.fromNewCoins });
+              io.emit('user_coins_changed', { username: winnerPlayer.username, coins: res.toNewCoins });
+            }
+          }
+        });
       }
     }
   }
 
+  if (transfers.length > 0) {
+    io.to(room.code).emit('coin_transfer_event', {
+      transfers,
+      stake,
+      commentary: `💰 ${transfers.map(t => `${t.amount} coins from ${t.fromName} ➔ ${t.toName}`).join(' | ')}`
+    });
+  }
+
   room.pot = 0;
+}
+
+// Online Active Players Helper
+function getOnlinePlayersList() {
+  const online = [];
+  const seenUsers = new Set();
+
+  for (const [id, s] of io.sockets.sockets) {
+    const uname = s.user ? s.user.username : (s.playerName || 'Guest');
+    const uKey = uname.toLowerCase();
+    if (!seenUsers.has(uKey)) {
+      seenUsers.add(uKey);
+      let roomCode = null;
+      let gameType = null;
+      for (const r of rooms.values()) {
+        if (r.players.some(p => p.id === id) || (s.user && r.players.some(p => p.username === s.user.username))) {
+          roomCode = r.code;
+          gameType = r.gameType;
+          break;
+        }
+      }
+      const uData = s.user ? userManager.getUser(s.user.username) : null;
+      online.push({
+        id,
+        username: uname,
+        name: s.user ? s.user.username : (s.playerName || 'Player'),
+        avatar: s.avatar || (s.user ? '🐯' : '👤'),
+        role: s.user ? s.user.role : 'guest',
+        coins: uData ? (uData.coins || 0) : 0,
+        roomCode,
+        gameType,
+        status: roomCode ? `Playing ${gameType ? gameType.toUpperCase() : 'GAME'} (${roomCode})` : 'In Lobby / Home'
+      });
+    }
+  }
+  return online;
 }
 
 // Socket Connection
@@ -279,6 +425,9 @@ io.on('connection', (socket) => {
   let userRoomCode = null;
   let currentUser = null; // { username, role, coins }
   console.log(`⚡ [${new Date().toLocaleTimeString()}] Client connected: ${socket.id}`);
+
+  // Broadcast live online count
+  io.emit('online_count', { count: getOnlinePlayersList().length });
 
   // ========================================================
   // AUTHENTICATION & ADMIN NAQQASH ACTIONS
@@ -292,6 +441,7 @@ io.on('connection', (socket) => {
     socket.user = currentUser;
     socket.emit('auth_success', { user: currentUser });
     console.log(`🔑 Login successful: ${currentUser.username} (${currentUser.role})`);
+    io.emit('online_count', { count: getOnlinePlayersList().length });
   });
 
   // Admin Naqqash creates player ID & password
@@ -306,12 +456,36 @@ io.on('connection', (socket) => {
     socket.emit('admin_user_created', { user: res.user, allUsers: userManager.getAllUsers('naqqash') });
   });
 
-  // Admin Naqqash allots coins to any user or himself
-  socket.on('admin_allot_coins', ({ targetUsername, amount }) => {
+  // Admin Naqqash removes / deletes player account
+  socket.on('admin_delete_user', ({ targetUsername }) => {
     if (!currentUser || currentUser.username !== 'naqqash') {
       return socket.emit('error_msg', 'Access Denied! Only Naqqash has Admin authority.');
     }
-    const res = userManager.allotCoins('naqqash', { targetUsername, amount });
+    const res = userManager.deleteUser('naqqash', targetUsername);
+    if (!res.success) {
+      return socket.emit('error_msg', res.error);
+    }
+    socket.emit('admin_user_deleted', {
+      deletedUsername: res.deletedUsername,
+      allUsers: res.allUsers
+    });
+    // Disconnect active socket of deleted user
+    for (const [id, s] of io.sockets.sockets) {
+      if (s.user && s.user.username.toLowerCase() === targetUsername.toLowerCase()) {
+        s.emit('error_msg', 'Your account has been deleted by Admin Naqqash.');
+        s.user = null;
+        s.disconnect();
+      }
+    }
+    io.emit('online_count', { count: getOnlinePlayersList().length });
+  });
+
+  // Admin Naqqash allots coins to any user or himself (Add / Deduct / Set)
+  socket.on('admin_allot_coins', ({ targetUsername, amount, action }) => {
+    if (!currentUser || currentUser.username !== 'naqqash') {
+      return socket.emit('error_msg', 'Access Denied! Only Naqqash has Admin authority.');
+    }
+    const res = userManager.allotCoins('naqqash', { targetUsername, amount, action });
     if (!res.success) {
       return socket.emit('error_msg', res.error);
     }
@@ -320,7 +494,6 @@ io.on('connection', (socket) => {
       newCoins: res.newCoins,
       allUsers: userManager.getAllUsers('naqqash')
     });
-    // Broadcast coin update to target user if connected
     io.emit('user_coins_changed', { username: res.username, coins: res.newCoins });
   });
 
@@ -341,6 +514,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Get public global leaderboard (all players can see everyone's score/stats)
+  socket.on('get_leaderboard', () => {
+    socket.emit('leaderboard_data', { leaderboard: userManager.getPublicLeaderboard() });
+  });
+
+  // Get online players list
+  socket.on('get_online_players', () => {
+    socket.emit('online_players_list', { players: getOnlinePlayersList() });
+  });
+
   // ========================================================
   // ROOM MANAGEMENT & BETTING
   // ========================================================
@@ -349,7 +532,8 @@ io.on('connection', (socket) => {
     gameType = (gameType || 'snake').toLowerCase();
     const chosenAvatar = avatar || 'tiger';
     const playerColor = PLAYER_PALETTE[0];
-    const username = currentUser ? currentUser.username : playerName;
+    const username = (currentUser ? currentUser.username : playerName || 'Player 1').trim();
+    const effectiveName = currentUser ? currentUser.username : (playerName || 'Player 1').trim();
     const stake = Math.max(0, parseInt(betAmount) || 0);
 
     // If betting, verify coins
@@ -358,10 +542,9 @@ io.on('connection', (socket) => {
       if (!u || u.coins < stake) {
         return socket.emit('error_msg', `Not enough coins to bet ${stake}! Your balance: ${u ? u.coins : 0} coins.`);
       }
-      userManager.adjustCoins(currentUser.username, -stake);
     }
 
-    console.log(`🏠 Room CREATED: ${code} [${gameType.toUpperCase()}] Bet: ${stake} by ${playerName || 'Anonymous'}`);
+    console.log(`🏠 Room CREATED: ${code} [${gameType.toUpperCase()}] Bet: ${stake} by ${effectiveName}`);
 
     const room = {
       code,
@@ -379,7 +562,7 @@ io.on('connection', (socket) => {
         {
           id: socket.id,
           username,
-          name: playerName || 'Player 1',
+          name: effectiveName,
           avatar: chosenAvatar,
           color: playerColor,
           position: 0,
@@ -462,7 +645,8 @@ io.on('connection', (socket) => {
       return socket.emit('error_msg', 'Room is full (Maximum 30 players). You can join as a spectator!');
     }
 
-    const username = currentUser ? currentUser.username : playerName;
+    const username = (currentUser ? currentUser.username : playerName || `Cousin ${room.players.length + 1}`).trim();
+    const effectiveName = currentUser ? currentUser.username : (playerName || `Cousin ${room.players.length + 1}`).trim();
     const stake = room.betAmount || 0;
 
     // Check coins for bet if player
@@ -471,8 +655,6 @@ io.on('connection', (socket) => {
       if (!u || u.coins < stake) {
         return socket.emit('error_msg', `Not enough coins to enter this room! Entry Bet: ${stake} coins. Your balance: ${u ? u.coins : 0}.`);
       }
-      userManager.adjustCoins(currentUser.username, -stake);
-      room.pot += stake;
     }
 
     userRoomCode = code;
@@ -484,7 +666,7 @@ io.on('connection', (socket) => {
     const userObj = {
       id: socket.id,
       username,
-      name: playerName || `Cousin ${room.players.length + 1}`,
+      name: effectiveName,
       avatar: chosenAvatar,
       color: playerColor,
       position: 0,
@@ -1066,6 +1248,9 @@ io.on('connection', (socket) => {
     userRoomCode = null;
     socket.leave(prevCode);
 
+    // If leaving during active match, forfeit game & transfer coins to opponent
+    handlePlayerForfeit(room, socket.id);
+
     room.players = room.players.filter(p => p.id !== socket.id);
     room.team1.players = room.team1.players.filter(p => p.id !== socket.id);
     room.team2.players = room.team2.players.filter(p => p.id !== socket.id);
@@ -1086,6 +1271,11 @@ io.on('connection', (socket) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room) return;
+
+    // If disconnected during active match, forfeit game & transfer coins to opponent
+    handlePlayerForfeit(room, socket.id);
+
+    io.emit('online_count', { count: getOnlinePlayersList().length });
 
     setTimeout(() => {
       const activeSockets = io.sockets.adapter.rooms.get(userRoomCode);
