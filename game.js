@@ -1,20 +1,33 @@
 // NAQQASH - MULTIPLAYER FAMILY GAMING PLATFORM CLIENT CONTROLLER
-// Supports Snake & Ladders (up to 30 players, Lock-on-1, Giant 99 Snake, Last Loser) & Hand Cricket
+// Complete Engine: Hand Cricket, Snake & Ladders (30 Players), Classic Ludo (4 Players),
+// Admin Authentication (Naqqash Only), Coins & Betting System, Big Clear Banners & Popups
 
 document.addEventListener('DOMContentLoaded', () => {
   const DEFAULT_SERVER_URL = 'https://naqqash-hand-cricket.onrender.com';
-  const SERVER_CONFIG_VERSION = 'v6_family_arena';
+  const SERVER_CONFIG_VERSION = 'v7_naqqash_master';
 
-  // Available avatars
+  // Avatars
   const AVATARS = ['🐯', '🦁', '🐉', '🦅', '🐺', '👑', '⚔️', '🧙', '🤖', '🚀', '⚡', '💎'];
 
-  // Persistent user state
+  // User & Room State
   let myPlayerName = localStorage.getItem('naqqash_player_name') || '';
   let myAvatar = localStorage.getItem('naqqash_avatar') || '🐯';
   let myRole = 'player';
   let currentRoom = null;
   let selectedGameType = 'snake';
   let isSoundMuted = localStorage.getItem('naqqash_sound_muted') === 'true';
+  let currentUser = null; // { username, role, coins }
+
+  // Load saved auth user if available
+  try {
+    const savedUser = localStorage.getItem('naqqash_auth_user');
+    if (savedUser) {
+      currentUser = JSON.parse(savedUser);
+      myPlayerName = currentUser.username;
+    }
+  } catch (e) {
+    console.error('Error restoring auth:', e);
+  }
 
   // Server URL Setup
   let serverUrl = '';
@@ -34,7 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   let socket = (typeof io !== 'undefined') ? io(serverUrl, socketOptions) : null;
 
-  // DOM Elements
+  // ========================================================
+  // DOM ELEMENTS
+  // ========================================================
   const headerHomeBtn = document.getElementById('headerHomeBtn');
   const backBtn = document.getElementById('backBtn');
   const roomBadge = document.getElementById('roomBadge');
@@ -44,11 +59,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const soundToggleBtn = document.getElementById('soundToggleBtn');
   const serverConfigBtn = document.getElementById('serverConfigBtn');
 
+  // Auth & Admin Header Elements
+  const headerCoinsPill = document.getElementById('headerCoinsPill');
+  const headerCoinsDisplay = document.getElementById('headerCoinsDisplay');
+  const headerUserBadge = document.getElementById('headerUserBadge');
+  const headerUsername = document.getElementById('headerUsername');
+  const headerLoginBtn = document.getElementById('headerLoginBtn');
+  const headerAdminBtn = document.getElementById('headerAdminBtn');
+  const headerStatsBtn = document.getElementById('headerStatsBtn');
+  const headerLogoutBtn = document.getElementById('headerLogoutBtn');
+
   // Views
   const homeScreen = document.getElementById('homeScreen');
   const roomLobbyView = document.getElementById('roomLobbyView');
   const snakeGameView = document.getElementById('snakeGameView');
   const cricketGameView = document.getElementById('cricketGameView');
+  const ludoGameView = document.getElementById('ludoGameView');
 
   // Home Screen Elements
   const playerNameInput = document.getElementById('playerNameInput');
@@ -68,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const createModalTitle = document.getElementById('createModalTitle');
   const closeCreateModalBtn = document.getElementById('closeCreateModalBtn');
   const modalPlayerNameInput = document.getElementById('modalPlayerNameInput');
+  const betAmountSelect = document.getElementById('betAmountSelect');
   const cricketCreateOptions = document.getElementById('cricketCreateOptions');
   const team1NameInput = document.getElementById('team1NameInput');
   const team2NameInput = document.getElementById('team2NameInput');
@@ -82,8 +109,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const playAgainBtn = document.getElementById('playAgainBtn');
   const returnHomeBtn = document.getElementById('returnHomeBtn');
 
+  // Auth Modals
+  const loginModal = document.getElementById('loginModal');
+  const closeLoginModalBtn = document.getElementById('closeLoginModalBtn');
+  const loginUsernameInput = document.getElementById('loginUsernameInput');
+  const loginPasswordInput = document.getElementById('loginPasswordInput');
+  const submitLoginBtn = document.getElementById('submitLoginBtn');
+  const loginErrorMsg = document.getElementById('loginErrorMsg');
+
+  // Admin Modals
+  const adminModal = document.getElementById('adminModal');
+  const closeAdminModalBtn = document.getElementById('closeAdminModalBtn');
+  const adminTabUsersBtn = document.getElementById('adminTabUsersBtn');
+  const adminTabCreateBtn = document.getElementById('adminTabCreateBtn');
+  const adminTabAllotBtn = document.getElementById('adminTabAllotBtn');
+  const adminTabUsers = document.getElementById('adminTabUsers');
+  const adminTabCreate = document.getElementById('adminTabCreate');
+  const adminTabAllot = document.getElementById('adminTabAllot');
+  const adminUsersTableBody = document.getElementById('adminUsersTableBody');
+  const newUsernameInput = document.getElementById('newUsernameInput');
+  const newPasswordInput = document.getElementById('newPasswordInput');
+  const newInitialCoinsInput = document.getElementById('newInitialCoinsInput');
+  const adminCreateUserSubmitBtn = document.getElementById('adminCreateUserSubmitBtn');
+  const adminCreateUserErrorMsg = document.getElementById('adminCreateUserErrorMsg');
+  const allotTargetUserInput = document.getElementById('allotTargetUserInput');
+  const allotAmountInput = document.getElementById('allotAmountInput');
+  const adminAllotCoinsSubmitBtn = document.getElementById('adminAllotCoinsSubmitBtn');
+  const adminAllotErrorMsg = document.getElementById('adminAllotErrorMsg');
+
+  // Stats Modal
+  const statsModal = document.getElementById('statsModal');
+  const closeStatsModalBtn = document.getElementById('closeStatsModalBtn');
+  const statsContent = document.getElementById('statsContent');
+
   // Waiting Room Elements
   const lobbyGameBadge = document.getElementById('lobbyGameBadge');
+  const lobbyBetBadge = document.getElementById('lobbyBetBadge');
   const lobbyRoomCode = document.getElementById('lobbyRoomCode');
   const copyInviteLinkBtn = document.getElementById('copyInviteLinkBtn');
   const connectedPlayersCount = document.getElementById('connectedPlayersCount');
@@ -104,7 +165,49 @@ document.addEventListener('DOMContentLoaded', () => {
   const snakeRollBtn = document.getElementById('snakeRollBtn');
   const snakeLeaderboardList = document.getElementById('snakeLeaderboardList');
 
-  // Init Player info
+  // Cricket Arena Elements
+  const cricketT1Name = document.getElementById('cricketT1Name');
+  const cricketT1Score = document.getElementById('cricketT1Score');
+  const cricketT1Wickets = document.getElementById('cricketT1Wickets');
+  const cricketT1Overs = document.getElementById('cricketT1Overs');
+  const cricketT2Name = document.getElementById('cricketT2Name');
+  const cricketT2Score = document.getElementById('cricketT2Score');
+  const cricketT2Wickets = document.getElementById('cricketT2Wickets');
+  const cricketTarget = document.getElementById('cricketTarget');
+  const cricketMaxOvers = document.getElementById('cricketMaxOvers');
+  const cricketBatsmanName = document.getElementById('cricketBatsmanName');
+  const cricketBowlerName = document.getElementById('cricketBowlerName');
+  const cricketBatsmanScoreDisplay = document.getElementById('cricketBatsmanScoreDisplay');
+  const cricketBowlerOverDisplay = document.getElementById('cricketBowlerOverDisplay');
+  const cricketPicksIndicator = document.getElementById('cricketPicksIndicator');
+  const cricketCommentaryText = document.getElementById('cricketCommentaryText');
+  const cricketTossSection = document.getElementById('cricketTossSection');
+  const cricketHandsStage = document.getElementById('cricketHandsStage');
+  const cricketPickSection = document.getElementById('cricketPickSection');
+  const callHeadsBtn = document.getElementById('callHeadsBtn');
+  const callTailsBtn = document.getElementById('callTailsBtn');
+  const chooseBatBtn = document.getElementById('chooseBatBtn');
+  const chooseBowlBtn = document.getElementById('chooseBowlBtn');
+  const cricketTossDecisionButtons = document.getElementById('cricketTossDecisionButtons');
+  const cricketTossButtons = document.getElementById('cricketTossButtons');
+  const batsmanHandMount = document.getElementById('batsmanHandMount');
+  const bowlerHandMount = document.getElementById('bowlerHandMount');
+
+  // Big Ball Result Popup
+  const cricketBallPopup = document.getElementById('cricketBallPopup');
+  const ballResultCard = document.getElementById('ballResultCard');
+  const ballResultTitle = document.getElementById('ballResultTitle');
+  const ballResultSub = document.getElementById('ballResultSub');
+  const popupBatMove = document.getElementById('popupBatMove');
+  const popupBowlMove = document.getElementById('popupBowlMove');
+
+  // Ludo Arena Elements
+  const ludoBoardMount = document.getElementById('ludoBoardMount');
+  const ludoRollBtn = document.getElementById('ludoRollBtn');
+
+  // ========================================================
+  // INITIAL USER INTERFACE STATE
+  // ========================================================
   if (myPlayerName) playerNameInput.value = myPlayerName;
   currentAvatarEmoji.textContent = myAvatar;
 
@@ -127,9 +230,47 @@ document.addEventListener('DOMContentLoaded', () => {
     soundToggleBtn.textContent = isSoundMuted ? '🔇' : '🔊';
   }
 
-  // View Navigation System
+  // Update Auth UI according to currentUser
+  function updateAuthUI() {
+    if (currentUser) {
+      headerLoginBtn.style.display = 'none';
+      headerUserBadge.style.display = 'inline-flex';
+      headerUsername.textContent = currentUser.username;
+      headerCoinsPill.style.display = 'inline-flex';
+      headerCoinsDisplay.textContent = (currentUser.coins || 0).toLocaleString();
+      headerStatsBtn.style.display = 'inline-flex';
+      headerLogoutBtn.style.display = 'inline-flex';
+
+      if (currentUser.username.toLowerCase() === 'naqqash') {
+        headerAdminBtn.style.display = 'inline-flex';
+      } else {
+        headerAdminBtn.style.display = 'none';
+      }
+    } else {
+      headerLoginBtn.style.display = 'inline-flex';
+      headerUserBadge.style.display = 'none';
+      headerCoinsPill.style.display = 'none';
+      headerAdminBtn.style.display = 'none';
+      headerStatsBtn.style.display = 'none';
+      headerLogoutBtn.style.display = 'none';
+    }
+  }
+
+  updateAuthUI();
+
+  // If saved user, attempt re-login on connect
+  function autoRelogin() {
+    if (currentUser && socket && socket.connected) {
+      // Fetch fresh stats / coins
+      socket.emit('get_my_stats');
+    }
+  }
+
+  // ========================================================
+  // VIEW NAVIGATION SYSTEM
+  // ========================================================
   function showView(viewId) {
-    [homeScreen, roomLobbyView, snakeGameView, cricketGameView].forEach(v => {
+    [homeScreen, roomLobbyView, snakeGameView, cricketGameView, ludoGameView].forEach(v => {
       if (v) v.classList.remove('active');
     });
     const target = document.getElementById(viewId);
@@ -163,6 +304,112 @@ document.addEventListener('DOMContentLoaded', () => {
       currentRoom = null;
       showView('homeScreen');
     }
+  });
+
+  // ========================================================
+  // AUTHENTICATION & ADMIN CONTROLS
+  // ========================================================
+  headerLoginBtn.addEventListener('click', () => {
+    loginErrorMsg.style.display = 'none';
+    loginUsernameInput.value = '';
+    loginPasswordInput.value = '';
+    loginModal.style.display = 'flex';
+  });
+
+  closeLoginModalBtn.addEventListener('click', () => {
+    loginModal.style.display = 'none';
+  });
+
+  submitLoginBtn.addEventListener('click', () => {
+    const username = loginUsernameInput.value.trim();
+    const password = loginPasswordInput.value.trim();
+    if (!username || !password) {
+      loginErrorMsg.textContent = 'Please enter both username and password!';
+      loginErrorMsg.style.display = 'block';
+      return;
+    }
+    if (socket) {
+      socket.emit('auth_login', { username, password });
+    }
+  });
+
+  headerLogoutBtn.addEventListener('click', () => {
+    if (confirm('Are you sure you want to logout?')) {
+      currentUser = null;
+      localStorage.removeItem('naqqash_auth_user');
+      updateAuthUI();
+    }
+  });
+
+  // Admin Modal Opening
+  headerAdminBtn.addEventListener('click', () => {
+    adminModal.style.display = 'flex';
+    switchAdminTab('users');
+    if (socket) socket.emit('admin_get_users');
+  });
+
+  closeAdminModalBtn.addEventListener('click', () => {
+    adminModal.style.display = 'none';
+  });
+
+  // Admin Tabs
+  adminTabUsersBtn.addEventListener('click', () => {
+    switchAdminTab('users');
+    if (socket) socket.emit('admin_get_users');
+  });
+  adminTabCreateBtn.addEventListener('click', () => switchAdminTab('create'));
+  adminTabAllotBtn.addEventListener('click', () => switchAdminTab('allot'));
+
+  function switchAdminTab(tab) {
+    adminTabUsers.style.display = tab === 'users' ? 'block' : 'none';
+    adminTabCreate.style.display = tab === 'create' ? 'block' : 'none';
+    adminTabAllot.style.display = tab === 'allot' ? 'block' : 'none';
+
+    adminTabUsersBtn.style.borderColor = tab === 'users' ? '#38bdf8' : 'transparent';
+    adminTabCreateBtn.style.borderColor = tab === 'create' ? '#38bdf8' : 'transparent';
+    adminTabAllotBtn.style.borderColor = tab === 'allot' ? '#38bdf8' : 'transparent';
+  }
+
+  // Admin: Create User
+  adminCreateUserSubmitBtn.addEventListener('click', () => {
+    const username = newUsernameInput.value.trim();
+    const password = newPasswordInput.value.trim();
+    const initialCoins = parseInt(newInitialCoinsInput.value) || 1000;
+
+    if (!username || !password) {
+      adminCreateUserErrorMsg.textContent = 'Username and password required!';
+      adminCreateUserErrorMsg.style.display = 'block';
+      return;
+    }
+    adminCreateUserErrorMsg.style.display = 'none';
+    if (socket) {
+      socket.emit('admin_create_user', { username, password, initialCoins });
+    }
+  });
+
+  // Admin: Allot Coins
+  adminAllotCoinsSubmitBtn.addEventListener('click', () => {
+    const targetUsername = allotTargetUserInput.value.trim();
+    const amount = parseInt(allotAmountInput.value);
+
+    if (!targetUsername || isNaN(amount)) {
+      adminAllotErrorMsg.textContent = 'Valid username and coin amount required!';
+      adminAllotErrorMsg.style.display = 'block';
+      return;
+    }
+    adminAllotErrorMsg.style.display = 'none';
+    if (socket) {
+      socket.emit('admin_allot_coins', { targetUsername, amount });
+    }
+  });
+
+  // Career Stats Modal
+  headerStatsBtn.addEventListener('click', () => {
+    statsModal.style.display = 'flex';
+    if (socket) socket.emit('get_my_stats');
+  });
+  closeStatsModalBtn.addEventListener('click', () => {
+    statsModal.style.display = 'none';
   });
 
   // Avatar Picker
@@ -216,8 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function openCreateModal(gameType) {
     selectedGameType = gameType;
     createModalTitle.textContent = gameType === 'snake' ? 'CREATE SNAKE & LADDERS ROOM' :
-                                   gameType === 'ludo' ? 'CREATE LUDO ROOM' : 'CREATE HAND CRICKET ROOM';
-    modalPlayerNameInput.value = myPlayerName || playerNameInput.value || '';
+                                   gameType === 'ludo' ? 'CREATE LUDO CLASSIC ROOM' : 'CREATE HAND CRICKET ROOM';
+    modalPlayerNameInput.value = currentUser ? currentUser.username : (myPlayerName || playerNameInput.value || '');
     cricketCreateOptions.style.display = gameType === 'cricket' ? 'block' : 'none';
     createRoomModal.style.display = 'flex';
   }
@@ -227,15 +474,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   confirmCreateRoomBtn.addEventListener('click', () => {
-    const pName = modalPlayerNameInput.value.trim() || `Player ${Math.floor(Math.random() * 90 + 10)}`;
+    const pName = modalPlayerNameInput.value.trim() || (currentUser ? currentUser.username : `Player ${Math.floor(Math.random() * 90 + 10)}`);
     myPlayerName = pName;
     localStorage.setItem('naqqash_player_name', myPlayerName);
+
+    const betAmount = parseInt(betAmountSelect.value) || 0;
 
     if (socket) {
       socket.emit('create_room', {
         playerName: pName,
         gameType: selectedGameType,
         avatar: myAvatar,
+        betAmount,
         team1Name: team1NameInput.value.trim(),
         team2Name: team2NameInput.value.trim(),
         maxOvers: oversSelect.value
@@ -256,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Please enter a valid 5-letter Room Code!');
       return;
     }
-    const pName = myPlayerName || playerNameInput.value.trim() || `Cousin ${Math.floor(Math.random() * 90 + 10)}`;
+    const pName = currentUser ? currentUser.username : (myPlayerName || playerNameInput.value.trim() || `Cousin ${Math.floor(Math.random() * 90 + 10)}`);
     myPlayerName = pName;
     localStorage.setItem('naqqash_player_name', myPlayerName);
 
@@ -307,6 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
     s.on('connect', () => {
       connStatusPill.className = 'status-pill';
       connStatusText.textContent = 'ONLINE';
+      autoRelogin();
     });
 
     s.on('disconnect', () => {
@@ -323,6 +574,55 @@ document.addEventListener('DOMContentLoaded', () => {
       alert(msg);
     });
 
+    // Auth events
+    s.on('auth_success', ({ user }) => {
+      currentUser = user;
+      localStorage.setItem('naqqash_auth_user', JSON.stringify(user));
+      updateAuthUI();
+      loginModal.style.display = 'none';
+      alert(`Welcome, ${user.username}! Login successful.`);
+    });
+
+    s.on('auth_error', (msg) => {
+      loginErrorMsg.textContent = msg;
+      loginErrorMsg.style.display = 'block';
+    });
+
+    s.on('user_coins_changed', ({ username, coins }) => {
+      if (currentUser && currentUser.username.toLowerCase() === username.toLowerCase()) {
+        currentUser.coins = coins;
+        localStorage.setItem('naqqash_auth_user', JSON.stringify(currentUser));
+        updateAuthUI();
+      }
+    });
+
+    // Admin events
+    s.on('admin_users_list', ({ users }) => {
+      renderAdminUsersTable(users);
+    });
+
+    s.on('admin_user_created', ({ user, allUsers }) => {
+      alert(`✅ User "${user.username}" created successfully with ${user.coins} coins!`);
+      newUsernameInput.value = '';
+      newPasswordInput.value = '';
+      renderAdminUsersTable(allUsers);
+      switchAdminTab('users');
+    });
+
+    s.on('admin_coins_updated', ({ targetUsername, newCoins, allUsers }) => {
+      alert(`💰 Successfully updated coins for "${targetUsername}". New balance: ${newCoins}`);
+      allotTargetUserInput.value = '';
+      allotAmountInput.value = '';
+      renderAdminUsersTable(allUsers);
+      switchAdminTab('users');
+    });
+
+    // Stats event
+    s.on('my_stats', ({ stats, coins }) => {
+      renderStatsModal(stats, coins);
+    });
+
+    // Room events
     s.on('room_created', ({ room, myPlayerId }) => {
       handleRoomEntered(room, myPlayerId);
     });
@@ -335,6 +635,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateRoomState(room);
     });
 
+    // Snake events
     s.on('snake_game_started', ({ room }) => {
       currentRoom = room;
       initSnakeArena(room);
@@ -345,18 +646,115 @@ document.addEventListener('DOMContentLoaded', () => {
       handleSnakeRollResult(rollResult, room);
     });
 
+    // Cricket events
     s.on('ball_completed', ({ result, room }) => {
       currentRoom = room;
       handleCricketBall(result, room);
+    });
+
+    s.on('pick_locked', ({ hasBatPicked, hasBowlPicked }) => {
+      if (cricketPicksIndicator) {
+        if (hasBatPicked && hasBowlPicked) {
+          cricketPicksIndicator.textContent = '⚡ RESOLVING BALL...';
+        } else if (hasBatPicked) {
+          cricketPicksIndicator.textContent = '🏏 Batsman ready!';
+        } else if (hasBowlPicked) {
+          cricketPicksIndicator.textContent = '⚾ Bowler ready!';
+        } else {
+          cricketPicksIndicator.textContent = 'Waiting for picks...';
+        }
+      }
     });
 
     s.on('toss_completed', ({ tossResult, winnerKey, winnerName, room }) => {
       currentRoom = room;
       handleCricketToss(tossResult, winnerKey, winnerName, room);
     });
+
+    // Ludo events
+    s.on('ludo_game_started', ({ room }) => {
+      currentRoom = room;
+      initLudoArena(room);
+    });
+
+    s.on('ludo_dice_rolled', ({ roll, eligibleTokens, room }) => {
+      currentRoom = room;
+      SoundEngine.playDiceRoll();
+      if (typeof LudoClient !== 'undefined') {
+        LudoClient.updateTokens(room.ludoState, socket.id);
+      }
+    });
+
+    s.on('ludo_token_moved', ({ moveResult, room }) => {
+      currentRoom = room;
+      if (moveResult.captured) {
+        SoundEngine.playOutWhistle();
+      } else {
+        SoundEngine.playTokenHop();
+      }
+      if (typeof LudoClient !== 'undefined') {
+        LudoClient.updateTokens(room.ludoState, socket.id);
+      }
+      if (room.gamePhase === 'match_over') {
+        showResultsModal(room);
+      }
+    });
   }
 
   bindSocketEvents(socket);
+
+  // Render Admin Users Directory
+  function renderAdminUsersTable(users) {
+    if (!users || !adminUsersTableBody) return;
+    let rows = '';
+    users.forEach(u => {
+      const isNaqqash = u.username.toLowerCase() === 'naqqash';
+      rows += `
+        <tr>
+          <td><b>${u.username}</b> ${isNaqqash ? '👑' : ''}</td>
+          <td><span style="color: ${isNaqqash ? '#facc15' : '#38bdf8'};">${u.role.toUpperCase()}</span></td>
+          <td><b style="color: #fde68a;">${(u.coins || 0).toLocaleString()}</b></td>
+          <td>${u.stats ? u.stats.matchesPlayed : 0}</td>
+          <td>${u.stats ? u.stats.matchesWon : 0}</td>
+        </tr>
+      `;
+    });
+    adminUsersTableBody.innerHTML = rows;
+  }
+
+  // Render Career Statistics
+  function renderStatsModal(stats, coins) {
+    if (!statsContent) return;
+    const played = stats.matchesPlayed || 0;
+    const won = stats.matchesWon || 0;
+    const winRate = played > 0 ? Math.round((won / played) * 100) : 0;
+
+    statsContent.innerHTML = `
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; margin-bottom: 12px;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">COIN BALANCE</div>
+        <div style="font-size: 1.8rem; font-weight: 900; color: #fde68a;">💰 ${(coins || 0).toLocaleString()} Coins</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 0.72rem; color: var(--text-muted);">MATCHES PLAYED</div>
+          <div style="font-size: 1.4rem; font-weight: 900;">${played}</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 0.72rem; color: #10b981;">MATCHES WON</div>
+          <div style="font-size: 1.4rem; font-weight: 900; color: #34d399;">${won} (${winRate}%)</div>
+        </div>
+      </div>
+
+      <div style="font-size: 0.85rem; font-weight: 800; color: var(--accent-cyan); margin-bottom: 8px;">GAME STATS:</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between;"><span>🏏 Cricket Runs:</span> <b>${stats.cricketRuns || 0}</b></div>
+        <div style="display: flex; justify-content: space-between;"><span>⚾ Cricket Wickets:</span> <b>${stats.cricketWickets || 0}</b></div>
+        <div style="display: flex; justify-content: space-between;"><span>🐍 Snake & Ladders Wins:</span> <b>${stats.snakeWins || 0}</b></div>
+        <div style="display: flex; justify-content: space-between;"><span>🎲 Ludo Classic Wins:</span> <b>${stats.ludoWins || 0}</b></div>
+      </div>
+    `;
+  }
 
   // Room Joined / Created Entry point
   function handleRoomEntered(room, myPlayerId) {
@@ -366,7 +764,13 @@ document.addEventListener('DOMContentLoaded', () => {
     lobbyRoomCode.textContent = room.code;
     lobbyGameBadge.textContent = (room.gameType || 'snake').toUpperCase();
 
-    // Check if cricket teams view needed
+    if (room.betAmount && room.betAmount > 0) {
+      lobbyBetBadge.style.display = 'inline-flex';
+      lobbyBetBadge.textContent = `💰 POT: ${((room.pot || (room.betAmount * room.players.length)) || 0).toLocaleString()} COINS`;
+    } else {
+      lobbyBetBadge.style.display = 'none';
+    }
+
     cricketLobbyTeams.style.display = room.gameType === 'cricket' ? 'block' : 'none';
 
     updateRoomState(room);
@@ -381,7 +785,6 @@ document.addEventListener('DOMContentLoaded', () => {
     roomCodeDisplay.textContent = room.code;
     const isHost = socket && socket.id === room.hostId;
 
-    // Connected Players in Lobby
     const players = room.snakeState ? room.snakeState.players :
                     room.gameType === 'cricket' ? [...room.team1.players, ...room.team2.players] : (room.players || []);
 
@@ -406,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     lobbyPlayersGrid.innerHTML = playersHtml;
 
-    // Host Controls in Waiting Room
+    // Host Controls
     if (isHost) {
       startMatchBtn.style.display = 'inline-flex';
       lobbyWaitingNote.style.display = 'none';
@@ -421,11 +824,13 @@ document.addEventListener('DOMContentLoaded', () => {
       lobbyTeam2List.innerHTML = room.team2.players.map(p => `<div>${p.name}</div>`).join('') || '<div style="color: var(--text-muted);">No players yet</div>';
     }
 
-    // If currently playing in Snake arena
+    // Active Game Routing
     if (room.gameType === 'snake' && room.gamePhase === 'playing') {
       updateSnakeArenaUI(room);
     } else if (room.gameType === 'cricket' && (room.gamePhase === 'playing' || room.gamePhase === 'toss')) {
       updateCricketArenaUI(room);
+    } else if (room.gameType === 'ludo' && room.gamePhase === 'playing') {
+      updateLudoArenaUI(room);
     }
 
     // Check Finished state
@@ -439,7 +844,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // ========================================================
   function initSnakeArena(room) {
     showView('snakeGameView');
-    // Mount board SVG if not already mounted
     snakeBoardMount.innerHTML = SnakeGame.renderBoardSVG();
     updateSnakeArenaUI(room);
   }
@@ -447,10 +851,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateSnakeArenaUI(room) {
     if (!room.snakeState) return;
 
-    // 1. Update Board Tokens
     SnakeGame.updateTokens(room.snakeState.players, room.snakeState.activePlayerId);
 
-    // 2. Active Turn Indicator
     const activeId = room.snakeState.activePlayerId;
     const isMyTurn = socket && socket.id === activeId;
     const activePlayer = room.snakeState.players.find(p => p.id === activeId);
@@ -471,7 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
       snakeRollBtn.textContent = activePlayer ? `WAITING FOR ${activePlayer.name.toUpperCase()}...` : 'WAITING...';
     }
 
-    // 3. Update Live Race Leaderboard
+    // Update Live Race Leaderboard
     const sorted = [...room.snakeState.players].sort((a, b) => {
       if (a.hasFinished && !b.hasFinished) return -1;
       if (!a.hasFinished && b.hasFinished) return 1;
@@ -504,7 +906,6 @@ document.addEventListener('DOMContentLoaded', () => {
     snakeLeaderboardList.innerHTML = lbHtml;
   }
 
-  // Roll Dice Action
   snakeRollBtn.addEventListener('click', () => {
     if (socket) {
       snakeRollBtn.disabled = true;
@@ -513,138 +914,34 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function handleSnakeRollResult(rollResult, room) {
-    // 3D Dice roll animation
     SnakeGame.rollDiceAnimation(rollResult.roll, () => {
-      // Play specific event sounds
-      if (rollResult.eventType === 'unlocked') {
-        SoundEngine.playPlayerUnlock();
-      } else if (rollResult.eventType === 'ladder') {
-        SoundEngine.playLadderClimb();
-      } else if (rollResult.eventType === 'snake') {
-        SoundEngine.playSnakeSlide();
-      } else if (rollResult.eventType === 'giant_99') {
-        SoundEngine.playGiantSnake();
-      } else if (rollResult.eventType === 'win') {
-        SoundEngine.playWinnerFanfare();
-      } else if (rollResult.eventType === 'normal') {
-        SoundEngine.playTokenHop();
+      // Step-by-step slow hopping animation
+      if (rollResult.stepPath && rollResult.stepPath.length > 0) {
+        SnakeGame.animateTokenMovement(rollResult.playerId, rollResult.stepPath, rollResult.newPos, rollResult.eventType, () => {
+          triggerSnakeEventSound(rollResult.eventType);
+          snakeEventText.textContent = rollResult.bannerMsg;
+          updateSnakeArenaUI(room);
+        });
+      } else {
+        triggerSnakeEventSound(rollResult.eventType);
+        snakeEventText.textContent = rollResult.bannerMsg;
+        updateSnakeArenaUI(room);
       }
-
-      // Update banner text
-      snakeEventText.textContent = rollResult.bannerMsg;
-
-      // Update Board & UI
-      updateSnakeArenaUI(room);
     });
   }
 
-  // ========================================================
-  // RESULTS MODAL & THE LAST LOSER 💀
-  // ========================================================
-  function showResultsModal(room) {
-    const resultsPodium = document.getElementById('resultsPodium');
-    const lastLoserCard = document.getElementById('lastLoserCard');
-    const lastLoserName = document.getElementById('lastLoserName');
-
-    if (room.gameType === 'snake') {
-      const winners = room.snakeState.winners || [];
-      let podiumHtml = '';
-
-      if (winners[0]) {
-        podiumHtml += `
-          <div class="podium-slot rank-1">
-            <div style="font-size: 28px;">👑</div>
-            <div style="font-size: 1.1rem; font-weight: 900;">${winners[0].name}</div>
-            <div style="font-size: 0.72rem; color: #f59e0b; font-weight: 800;">1st PLACE 🏆</div>
-          </div>
-        `;
-      }
-      if (winners[1]) {
-        podiumHtml += `
-          <div class="podium-slot rank-2">
-            <div style="font-size: 24px;">🥈</div>
-            <div style="font-size: 0.95rem; font-weight: 800;">${winners[1].name}</div>
-            <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 800;">2nd PLACE</div>
-          </div>
-        `;
-      }
-      if (winners[2]) {
-        podiumHtml += `
-          <div class="podium-slot rank-3">
-            <div style="font-size: 24px;">🥉</div>
-            <div style="font-size: 0.95rem; font-weight: 800;">${winners[2].name}</div>
-            <div style="font-size: 0.72rem; color: #b45309; font-weight: 800;">3rd PLACE</div>
-          </div>
-        `;
-      }
-      resultsPodium.innerHTML = podiumHtml;
-
-      // THE LAST LOSER 💀
-      if (room.snakeState.lastLoser) {
-        lastLoserName.textContent = room.snakeState.lastLoser.name;
-        lastLoserCard.style.display = 'flex';
-        SoundEngine.playLastLoser();
-      } else {
-        lastLoserCard.style.display = 'none';
-      }
-    } else {
-      // Cricket results
-      resultsPodium.innerHTML = `
-        <div class="podium-slot rank-1" style="width: 100%;">
-          <div style="font-size: 28px;">🏆</div>
-          <div style="font-size: 1.2rem; font-weight: 900;">${room.winner ? room.winner.name : 'MATCH OVER'}</div>
-          <div style="font-size: 0.8rem; color: var(--accent-cyan); font-weight: 800;">${room.winner ? (room.winner.margin || 'Victory!') : ''}</div>
-        </div>
-      `;
-      lastLoserCard.style.display = 'none';
-      SoundEngine.playWinnerFanfare();
-    }
-
-    gameResultsModal.style.display = 'flex';
+  function triggerSnakeEventSound(eventType) {
+    if (eventType === 'unlocked') SoundEngine.playPlayerUnlock();
+    else if (eventType === 'ladder') SoundEngine.playLadderClimb();
+    else if (eventType === 'snake') SoundEngine.playSnakeSlide();
+    else if (eventType === 'giant_99') SoundEngine.playGiantSnake();
+    else if (eventType === 'win') SoundEngine.playWinnerFanfare();
+    else if (eventType === 'normal') SoundEngine.playTokenHop();
   }
 
-  // Play Again / Rematch
-  playAgainBtn.addEventListener('click', () => {
-    gameResultsModal.style.display = 'none';
-    if (socket && currentRoom) {
-      socket.emit('restart_match');
-    }
-  });
-
-  returnHomeBtn.addEventListener('click', () => {
-    gameResultsModal.style.display = 'none';
-    if (socket && currentRoom) socket.emit('leave_room');
-    currentRoom = null;
-    showView('homeScreen');
-  });
-
   // ========================================================
-  // CRICKET ARENA CONTROLLER (PRESERVED)
+  // CRICKET ARENA CONTROLLER
   // ========================================================
-  const cricketT1Name = document.getElementById('cricketT1Name');
-  const cricketT1Score = document.getElementById('cricketT1Score');
-  const cricketT1Wickets = document.getElementById('cricketT1Wickets');
-  const cricketT1Overs = document.getElementById('cricketT1Overs');
-  const cricketT2Name = document.getElementById('cricketT2Name');
-  const cricketT2Score = document.getElementById('cricketT2Score');
-  const cricketT2Wickets = document.getElementById('cricketT2Wickets');
-  const cricketTarget = document.getElementById('cricketTarget');
-  const cricketMaxOvers = document.getElementById('cricketMaxOvers');
-  const cricketBatsmanName = document.getElementById('cricketBatsmanName');
-  const cricketBowlerName = document.getElementById('cricketBowlerName');
-  const cricketCommentaryText = document.getElementById('cricketCommentaryText');
-  const cricketTossSection = document.getElementById('cricketTossSection');
-  const cricketHandsStage = document.getElementById('cricketHandsStage');
-  const cricketPickSection = document.getElementById('cricketPickSection');
-  const callHeadsBtn = document.getElementById('callHeadsBtn');
-  const callTailsBtn = document.getElementById('callTailsBtn');
-  const chooseBatBtn = document.getElementById('chooseBatBtn');
-  const chooseBowlBtn = document.getElementById('chooseBowlBtn');
-  const cricketTossDecisionButtons = document.getElementById('cricketTossDecisionButtons');
-  const cricketTossButtons = document.getElementById('cricketTossButtons');
-  const batsmanHandMount = document.getElementById('batsmanHandMount');
-  const bowlerHandMount = document.getElementById('bowlerHandMount');
-
   function updateCricketArenaUI(room) {
     showView('cricketGameView');
     cricketT1Name.textContent = room.team1.name;
@@ -658,8 +955,17 @@ document.addEventListener('DOMContentLoaded', () => {
     cricketTarget.textContent = room.target || '---';
     cricketMaxOvers.textContent = room.settings ? room.settings.maxOvers : 2;
 
-    if (room.currentBatsman) cricketBatsmanName.textContent = room.currentBatsman.name;
-    if (room.currentBowler) cricketBowlerName.textContent = room.currentBowler.name;
+    // Prominent Batsman & Bowler Name and Stats
+    if (room.currentBatsman) {
+      cricketBatsmanName.textContent = room.currentBatsman.name;
+      cricketBatsmanScoreDisplay.textContent = `${room.currentBatsman.score || 0} runs (${room.currentBatsman.balls || 0} balls)`;
+    }
+    if (room.currentBowler) {
+      cricketBowlerName.textContent = room.currentBowler.name;
+      const bowlTeam = room[room.bowlingTeamKey];
+      cricketBowlerOverDisplay.textContent = `Over: ${bowlTeam.overs || 0}.${bowlTeam.balls || 0}`;
+    }
+
     if (room.commentary && room.commentary[0]) cricketCommentaryText.textContent = room.commentary[0];
 
     // Toss Phase
@@ -673,6 +979,42 @@ document.addEventListener('DOMContentLoaded', () => {
       cricketPickSection.style.display = 'block';
     }
   }
+
+  // Big Ball Result Popup Trigger
+  function showBigBallPopup(result) {
+    if (!cricketBallPopup) return;
+
+    ballResultTitle.textContent = result.popupTitle || (result.isOut ? '🔴 WICKET! OUT!' : `⚡ ${result.runs} RUNS!`);
+    ballResultSub.textContent = result.popupDetail || (result.isOut ? 'Both picked identical gestures!' : `Batsman scored ${result.runs} runs!`);
+
+    popupBatMove.textContent = result.batMove === 6 ? '👍 6' : (result.batMove === 10 ? '👊 10' : result.batMove);
+    popupBowlMove.textContent = result.bowlMove === 6 ? '👍 6' : (result.bowlMove === 10 ? '👊 10' : result.bowlMove);
+
+    if (result.isOut) {
+      ballResultCard.style.borderColor = '#ef4444';
+      ballResultCard.style.boxShadow = '0 0 50px rgba(239, 68, 68, 0.5)';
+      ballResultTitle.style.color = '#f87171';
+    } else if (result.isSix || result.isPunch) {
+      ballResultCard.style.borderColor = '#f59e0b';
+      ballResultCard.style.boxShadow = '0 0 50px rgba(245, 158, 11, 0.5)';
+      ballResultTitle.style.color = '#fde68a';
+    } else {
+      ballResultCard.style.borderColor = '#00f0ff';
+      ballResultCard.style.boxShadow = '0 0 50px rgba(0, 240, 255, 0.4)';
+      ballResultTitle.style.color = '#ffffff';
+    }
+
+    cricketBallPopup.style.display = 'flex';
+
+    // Auto dismiss after 2.6 seconds
+    setTimeout(() => {
+      cricketBallPopup.style.display = 'none';
+    }, 2600);
+  }
+
+  cricketBallPopup.addEventListener('click', () => {
+    cricketBallPopup.style.display = 'none';
+  });
 
   // Cricket Pick Run Gesture
   document.querySelectorAll('.run-btn').forEach(btn => {
@@ -695,11 +1037,16 @@ document.addEventListener('DOMContentLoaded', () => {
       batsmanHandMount.innerHTML = HandRenderer.getHandSVG(result.batMove, 'batsman', true);
       bowlerHandMount.innerHTML = HandRenderer.getHandSVG(result.bowlMove, 'bowler', true);
     }
+
     if (result.isOut) {
       SoundEngine.playOutWhistle();
     } else {
       SoundEngine.playBatShot();
     }
+
+    // Trigger Big Ball Result Popup!
+    showBigBallPopup(result);
+
     updateCricketArenaUI(room);
   }
 
@@ -708,7 +1055,116 @@ document.addEventListener('DOMContentLoaded', () => {
     cricketTossDecisionButtons.style.display = 'flex';
   }
 
-  // Check URL parameters for direct room joining (e.g. ?room=ABCDE&game=snake)
+  // ========================================================
+  // CLASSIC LUDO ARENA CONTROLLER
+  // ========================================================
+  function initLudoArena(room) {
+    showView('ludoGameView');
+    if (typeof LudoClient !== 'undefined') {
+      ludoBoardMount.innerHTML = LudoClient.renderBoardSVG();
+      LudoClient.updateTokens(room.ludoState, socket.id);
+    }
+  }
+
+  function updateLudoArenaUI(room) {
+    if (!room.ludoState) return;
+    if (typeof LudoClient !== 'undefined') {
+      LudoClient.updateTokens(room.ludoState, socket.id);
+    }
+  }
+
+  ludoRollBtn.addEventListener('click', () => {
+    if (socket) {
+      ludoRollBtn.disabled = true;
+      socket.emit('ludo_roll_dice');
+    }
+  });
+
+  window.onLudoTokenSelected = function(tokenIndex) {
+    if (socket) {
+      socket.emit('ludo_move_token', { tokenIndex });
+    }
+  };
+
+  // ========================================================
+  // RESULTS MODAL & THE LAST LOSER 💀
+  // ========================================================
+  function showResultsModal(room) {
+    const resultsPodium = document.getElementById('resultsPodium');
+    const lastLoserCard = document.getElementById('lastLoserCard');
+    const lastLoserName = document.getElementById('lastLoserName');
+
+    if (room.gameType === 'snake') {
+      const winners = room.snakeState.winners || [];
+      let podiumHtml = '';
+
+      winners.forEach((w) => {
+        const medal = w.rank === 1 ? '🥇' : (w.rank === 2 ? '🥈' : (w.rank === 3 ? '🥉' : '🎖️'));
+        podiumHtml += `
+          <div class="podium-card rank-${w.rank}">
+            <div class="podium-rank-badge">${medal} #${w.rank}</div>
+            <div class="podium-avatar">${w.avatar || '🐯'}</div>
+            <div class="podium-name">${w.name}</div>
+            <div class="podium-rolls">${w.totalRolls} Rolls</div>
+          </div>
+        `;
+      });
+      resultsPodium.innerHTML = podiumHtml;
+
+      if (room.lastLoser) {
+        lastLoserCard.style.display = 'block';
+        lastLoserName.textContent = room.lastLoser.name;
+        SoundEngine.playSadTrombone();
+      } else {
+        lastLoserCard.style.display = 'none';
+        SoundEngine.playWinnerFanfare();
+      }
+    } else if (room.gameType === 'ludo') {
+      const winner = room.winner || (room.ludoState && room.ludoState.winner);
+      let podiumHtml = `
+        <div class="podium-card rank-1">
+          <div class="podium-rank-badge">🥇 CHAMPION</div>
+          <div class="podium-avatar">👑</div>
+          <div class="podium-name">${winner ? winner.name : 'Player'}</div>
+          <div class="podium-rolls">Ludo Winner!</div>
+        </div>
+      `;
+      resultsPodium.innerHTML = podiumHtml;
+      lastLoserCard.style.display = 'none';
+      SoundEngine.playWinnerFanfare();
+    } else if (room.gameType === 'cricket') {
+      const winner = room.winner;
+      let podiumHtml = `
+        <div class="podium-card rank-1">
+          <div class="podium-rank-badge">🥇 WINNER</div>
+          <div class="podium-avatar">🏏</div>
+          <div class="podium-name">${winner ? winner.name : 'Winner'}</div>
+          <div class="podium-rolls">${winner ? (winner.margin || 'Match Won!') : 'Victory!'}</div>
+        </div>
+      `;
+      resultsPodium.innerHTML = podiumHtml;
+      lastLoserCard.style.display = 'none';
+      SoundEngine.playWinnerFanfare();
+    }
+
+    gameResultsModal.style.display = 'flex';
+  }
+
+  playAgainBtn.addEventListener('click', () => {
+    gameResultsModal.style.display = 'none';
+    if (socket && currentRoom) {
+      socket.emit('restart_match');
+    }
+  });
+
+  returnHomeBtn.addEventListener('click', () => {
+    gameResultsModal.style.display = 'none';
+    if (socket && currentRoom) socket.emit('leave_room');
+    currentRoom = null;
+    showView('homeScreen');
+  });
+
+  // Check URL parameters for direct room joining
   const urlParams = new URLSearchParams(window.location.search);
   const roomParam = urlParams.get('room');
   if (roomParam) {

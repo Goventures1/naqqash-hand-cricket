@@ -1,5 +1,5 @@
 // SNAKE & LADDERS CLIENT BOARD & GAME RENDERER
-// Premium 10x10 Vector Engine with Giant 99 Titan Snake & 30-Player Token Clustering
+// Premium 10x10 Vector Engine with Giant 99 Titan Snake, Step-by-Step Smooth Token Movement & Clear Name Tags
 
 const SnakeGame = {
   // Board configuration
@@ -105,7 +105,7 @@ const SnakeGame = {
       const coords = this.getSquareCoords(n);
       const isAlt = (coords.row + coords.col) % 2 === 1;
       let fill = isAlt ? 'url(#tileAlt)' : 'url(#tileDark)';
-      let border = 'rgba(255, 255, 255, 0.07)';
+      let border = 'rgba(255, 255, 255, 0.08)';
       let extraClass = '';
 
       if (n === 100) {
@@ -121,7 +121,7 @@ const SnakeGame = {
       }
 
       svg += `
-        <rect x="${coords.col * 100}" y="${(9 - coords.row) * 100}" width="100" height="100" fill="${fill}" stroke="${border}" stroke-width="1.5" rx="4" class="${extraClass}" />
+        <rect id="sq_tile_${n}" x="${coords.col * 100}" y="${(9 - coords.row) * 100}" width="100" height="100" fill="${fill}" stroke="${border}" stroke-width="1.5" rx="4" class="${extraClass}" />
         <text x="${coords.col * 100 + 12}" y="${(9 - coords.row) * 100 + 24}" fill="rgba(255,255,255,0.75)" font-size="14" font-weight="800" font-family="'Outfit', sans-serif">${n}</text>
       `;
 
@@ -152,7 +152,7 @@ const SnakeGame = {
     }
     svg += `</g>`;
 
-    // 3. Render Snakes (Normal snakes first)
+    // 3. Render Snakes
     svg += `<g id="boardSnakes">`;
     for (const [headStr, tail] of Object.entries(this.snakes)) {
       const head = parseInt(headStr);
@@ -160,7 +160,6 @@ const SnakeGame = {
         svg += this.renderSnakeSVG(head, tail);
       }
     }
-    // Render Giant 99 Titan Snake on top so it dominates the view!
     svg += this.renderGiantTitan99Snake();
     svg += `</g>`;
 
@@ -171,7 +170,6 @@ const SnakeGame = {
     return svg;
   },
 
-  // Draw a sleek futuristic ladder with rungs
   renderLadderSVG(start, end) {
     const c1 = this.getSquareCoords(start);
     const c2 = this.getSquareCoords(end);
@@ -185,15 +183,10 @@ const SnakeGame = {
     const perpX = Math.sin(angle) * railOffset;
     const perpY = -Math.cos(angle) * railOffset;
 
-    const r1x1 = c1.x + perpX;
-    const r1y1 = c1.y + perpY;
-    const r1x2 = c2.x + perpX;
-    const r1y2 = c2.y + perpY;
-
-    const r2x1 = c1.x - perpX;
-    const r2y1 = c1.y - perpY;
-    const r2x2 = c2.x - perpX;
-    const r2y2 = c2.y - perpY;
+    const r1x1 = c1.x + perpX, r1y1 = c1.y + perpY;
+    const r1x2 = c2.x + perpX, r1y2 = c2.y + perpY;
+    const r2x1 = c1.x - perpX, r2y1 = c1.y - perpY;
+    const r2x2 = c2.x - perpX, r2y2 = c2.y - perpY;
 
     let rungs = '';
     const numRungs = Math.max(3, Math.floor(length / 32));
@@ -215,13 +208,10 @@ const SnakeGame = {
     `;
   },
 
-  // Draw a standard serpent
   renderSnakeSVG(head, tail) {
     const c1 = this.getSquareCoords(head);
     const c2 = this.getSquareCoords(tail);
 
-    const dx = c2.x - c1.x;
-    const dy = c2.y - c1.y;
     const midX = (c1.x + c2.x) / 2 + (head % 2 === 0 ? 45 : -45);
     const midY = (c1.y + c2.y) / 2;
 
@@ -229,67 +219,45 @@ const SnakeGame = {
 
     return `
       <g class="snake-group">
-        <!-- Body Shadow -->
         <path d="${pathData}" fill="none" stroke="#000000" stroke-width="14" stroke-linecap="round" opacity="0.4"/>
-        <!-- Outer Body -->
         <path d="${pathData}" fill="none" stroke="url(#snakeGrad)" stroke-width="10" stroke-linecap="round"/>
-        <!-- Inner Pattern Spine -->
         <path d="${pathData}" fill="none" stroke="#fca5a5" stroke-width="3" stroke-dasharray="6,8" stroke-linecap="round"/>
-        <!-- Snake Head -->
         <circle cx="${c1.x}" cy="${c1.y}" r="12" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
         <circle cx="${c1.x - 4}" cy="${c1.y - 3}" r="2" fill="#fef08a"/>
         <circle cx="${c1.x + 4}" cy="${c1.y - 3}" r="2" fill="#fef08a"/>
-        <!-- Snake Tail -->
         <circle cx="${c2.x}" cy="${c2.y}" r="4" fill="#7f1d1d"/>
       </g>
     `;
   },
 
-  // RENDER THE SPECIAL HUGE 99 TITAN COBRA!
   renderGiantTitan99Snake() {
-    const c99 = this.getSquareCoords(99); // (150, 50)
-    const c10 = this.getSquareCoords(10); // (950, 950)
-
-    // Colossal winding S-curves sweeping across the board
-    const p1x = 120, p1y = 280;
-    const p2x = 380, p2y = 420;
-    const p3x = 240, p3y = 650;
-    const p4x = 650, p4y = 800;
+    const c99 = this.getSquareCoords(99);
+    const c10 = this.getSquareCoords(10);
 
     const pathData = `M ${c99.x} ${c99.y} 
-      C ${p1x} ${p1y}, ${p2x} ${p2y}, 300 500
-      C 220 580, ${p3x} ${p3y}, 450 720
-      C ${p4x} ${p4y}, 820 860, ${c10.x} ${c10.y}`;
+      C 120 280, 380 420, 300 500
+      C 220 580, 240 650, 450 720
+      C 650 800, 820 860, ${c10.x} ${c10.y}`;
 
     return `
       <g id="giantTitanSnake" class="titan-snake-group" filter="url(#glowTitan)">
-        <!-- Giant Shadow -->
         <path d="${pathData}" fill="none" stroke="#000000" stroke-width="28" stroke-linecap="round" opacity="0.6"/>
-        <!-- Massive Body -->
         <path d="${pathData}" fill="none" stroke="url(#titanSnakeGrad)" stroke-width="20" stroke-linecap="round"/>
-        <!-- Menacing Hazard Scales -->
         <path d="${pathData}" fill="none" stroke="#ff0055" stroke-width="6" stroke-dasharray="10,12" stroke-linecap="round" opacity="0.9"/>
-        <!-- Pulsing Center Core -->
         <path d="${pathData}" fill="none" stroke="#ffffff" stroke-width="2" stroke-dasharray="4,16" stroke-linecap="round"/>
 
-        <!-- TITAN COBRA HEAD AT 99: Enormous flared cobra hood -->
+        <!-- TITAN COBRA HEAD AT 99 -->
         <g transform="translate(${c99.x}, ${c99.y})">
-          <!-- Flared Hood -->
           <ellipse cx="0" cy="0" rx="34" ry="24" fill="#ff0055" stroke="#ffffff" stroke-width="3" />
           <path d="M -30 0 C -25 18, 25 18, 30 0 Z" fill="#7928ca"/>
-          <!-- Cobra Horns / Crest -->
           <polygon points="-8,-20 0,-32 8,-20" fill="#ff0055" stroke="#ffffff" stroke-width="1.5"/>
-          <!-- Evil Glowing Eyes -->
           <circle cx="-12" cy="-4" r="5" fill="#facc15" stroke="#000000" stroke-width="1"/>
           <line x1="-12" y1="-8" x2="-12" y2="0" stroke="#000000" stroke-width="2"/>
           <circle cx="12" cy="-4" r="5" fill="#facc15" stroke="#000000" stroke-width="1"/>
           <line x1="12" y1="-8" x2="12" y2="0" stroke="#000000" stroke-width="2"/>
-          <!-- Fangs -->
           <polygon points="-8,6 -5,14 -2,6" fill="#ffffff"/>
           <polygon points="2,6 5,14 8,6" fill="#ffffff"/>
-          <!-- Forked Tongue -->
           <path d="M 0 10 L 0 24 L -4 30 M 0 24 L 4 30" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
-          <!-- Badge -->
           <rect x="-38" y="-42" width="76" height="16" rx="8" fill="#111827" stroke="#ff0055" stroke-width="1.5"/>
           <text x="0" y="-30" fill="#fecdd3" font-size="9" font-weight="900" text-anchor="middle" letter-spacing="1">TITAN 99</text>
         </g>
@@ -302,14 +270,12 @@ const SnakeGame = {
     `;
   },
 
-  // Update token positions on the board (supports up to 30 players with clustering)
+  // Update token positions on the board with CLEAR NAME PILLS
   updateTokens(players, activePlayerId) {
     const layer = document.getElementById('boardTokensLayer');
     if (!layer) return;
 
     let svgTokens = '';
-
-    // Group players by position
     const posGroups = {};
     const lockedPlayers = [];
 
@@ -322,7 +288,7 @@ const SnakeGame = {
       }
     });
 
-    // Render tokens on the board squares
+    // Render tokens with prominent player names & position indicators
     for (const [posStr, playerList] of Object.entries(posGroups)) {
       const pos = parseInt(posStr);
       const center = this.getSquareCoords(pos);
@@ -333,9 +299,8 @@ const SnakeGame = {
         let offsetY = 0;
 
         if (count > 1) {
-          // Cluster arrangement around square center
           const angle = (idx / count) * 2 * Math.PI;
-          const radius = Math.min(28, 12 + count * 2);
+          const radius = Math.min(26, 12 + count * 2);
           offsetX = Math.cos(angle) * radius;
           offsetY = Math.sin(angle) * radius;
         }
@@ -344,30 +309,91 @@ const SnakeGame = {
         const ty = center.y + offsetY;
         const isCurrentTurn = p.id === activePlayerId;
         const color = (p.color && p.color.hex) ? p.color.hex : '#00f0ff';
-        const initial = (p.name || 'P').charAt(0).toUpperCase();
+        const displayName = (p.name || 'P').substring(0, 9);
 
         svgTokens += `
-          <g class="board-token ${isCurrentTurn ? 'token-active-turn' : ''}" transform="translate(${tx}, ${ty})" data-player-id="${p.id}">
+          <g id="token_player_${p.id}" class="board-token ${isCurrentTurn ? 'token-active-turn' : ''}" transform="translate(${tx}, ${ty})" data-player-id="${p.id}">
             <!-- Glow ring if active turn -->
-            ${isCurrentTurn ? `<circle cx="0" cy="0" r="22" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="4,4" class="token-turn-ring" />` : ''}
+            ${isCurrentTurn ? `<circle cx="0" cy="0" r="24" fill="none" stroke="${color}" stroke-width="3.5" stroke-dasharray="5,5" class="token-turn-ring" />` : ''}
+            
             <!-- Token Drop Shadow -->
-            <circle cx="0" cy="2" r="15" fill="#000000" opacity="0.6"/>
-            <!-- Token Base -->
-            <circle cx="0" cy="0" r="14" fill="${color}" stroke="#ffffff" stroke-width="2.5" />
-            <!-- Initial or Avatar Symbol -->
-            <text x="0" y="5" text-anchor="middle" font-size="11" font-weight="900" fill="#090d16" font-family="'Outfit', sans-serif">${initial}</text>
+            <circle cx="0" cy="3" r="16" fill="#000000" opacity="0.6"/>
+            
+            <!-- Token Circle Body -->
+            <circle cx="0" cy="0" r="15" fill="${color}" stroke="#ffffff" stroke-width="2.5" />
+            
+            <!-- Player Avatar Inside Token -->
+            <text x="0" y="5" text-anchor="middle" font-size="12" font-weight="900" fill="#07090e">${p.avatar || '🐯'}</text>
+            
+            <!-- CLEAR PROMINENT NAME PILL (Shows Player Name & Current Square) -->
+            <rect x="-35" y="16" width="70" height="18" rx="6" fill="#07090e" stroke="${color}" stroke-width="1.5" opacity="0.95"/>
+            <text x="0" y="29" text-anchor="middle" font-size="9.5" font-weight="900" fill="#ffffff" letter-spacing="0.3">${displayName}</text>
           </g>
         `;
       });
     }
 
     layer.innerHTML = svgTokens;
-
-    // Update the Locked Dugout Bench outside the board
     this.updateLockedDugout(lockedPlayers, activePlayerId);
   },
 
-  // Render players waiting in the Dugout (needs rolling a 1 to enter)
+  // SLOW, SMOOTH STEP-BY-STEP TOKEN MOVEMENT
+  animateTokenMovement(playerId, stepPath, finalPos, eventType, onComplete) {
+    const tokenEl = document.getElementById(`token_player_${playerId}`);
+    if (!tokenEl || !stepPath || stepPath.length === 0) {
+      if (onComplete) onComplete();
+      return;
+    }
+
+    let stepIdx = 0;
+    const stepInterval = 200; // 200ms per square for clear, smooth hopping!
+
+    function hopNext() {
+      if (stepIdx < stepPath.length) {
+        const sq = stepPath[stepIdx];
+        const coords = SnakeGame.getSquareCoords(sq);
+        tokenEl.setAttribute('transform', `translate(${coords.x}, ${coords.y})`);
+        
+        // Play hop sound
+        SoundEngine.playTokenHop();
+
+        // Highlight square temporarily
+        const tile = document.getElementById(`sq_tile_${sq}`);
+        if (tile) {
+          tile.setAttribute('stroke', '#00f0ff');
+          tile.setAttribute('stroke-width', '3');
+          setTimeout(() => {
+            tile.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+            tile.setAttribute('stroke-width', '1.5');
+          }, 180);
+        }
+
+        stepIdx++;
+        setTimeout(hopNext, stepInterval);
+      } else {
+        // Step path finished! Check if there's a ladder or snake to glide along!
+        if (eventType === 'ladder' || eventType === 'snake' || eventType === 'giant_99') {
+          setTimeout(() => {
+            const finalCoords = SnakeGame.getSquareCoords(finalPos);
+            // Add smooth gliding transition
+            tokenEl.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)';
+            tokenEl.setAttribute('transform', `translate(${finalCoords.x}, ${finalCoords.y})`);
+
+            setTimeout(() => {
+              tokenEl.style.transition = '';
+              if (onComplete) onComplete();
+            }, 650);
+          }, 300);
+        } else {
+          if (onComplete) onComplete();
+        }
+      }
+    }
+
+    hopNext();
+  },
+
+  // Render Dugout with clear names and status
   updateLockedDugout(lockedPlayers, activePlayerId) {
     const dugoutList = document.getElementById('snakeLockedList');
     const dugoutCount = document.getElementById('snakeLockedCount');
@@ -376,7 +402,7 @@ const SnakeGame = {
     if (dugoutCount) dugoutCount.textContent = `${lockedPlayers.length} LOCKED`;
 
     if (lockedPlayers.length === 0) {
-      dugoutList.innerHTML = `<div class="dugout-empty">All players are on the board! 🏁</div>`;
+      dugoutList.innerHTML = `<div style="color: #34d399; font-size: 0.82rem; text-align: center; padding: 10px;">All players entered the board! 🏁</div>`;
       return;
     }
 
@@ -384,17 +410,18 @@ const SnakeGame = {
     lockedPlayers.forEach(p => {
       const isCurrentTurn = p.id === activePlayerId;
       const color = (p.color && p.color.hex) ? p.color.hex : '#00f0ff';
-      const initial = (p.name || 'P').charAt(0).toUpperCase();
 
       html += `
         <div class="dugout-player-card ${isCurrentTurn ? 'dugout-active-turn' : ''}">
           <div class="dugout-avatar" style="border-color: ${color}; background: ${p.color ? p.color.bg : 'rgba(0,240,255,0.2)'};">
-            <span style="color: ${color}; font-weight: 900;">${initial}</span>
+            <span>${p.avatar || '🐯'}</span>
             <span class="dugout-lock-badge">🔒</span>
           </div>
           <div class="dugout-info">
-            <div class="dugout-name">${p.name} ${isCurrentTurn ? '<span class="badge-turn">ROLL NOW!</span>' : ''}</div>
-            <div class="dugout-sub">Needs roll of <b>1</b> to enter</div>
+            <div class="dugout-name" style="font-size: 0.95rem; font-weight: 800;">
+              ${p.name} ${isCurrentTurn ? '<span class="badge-turn" style="background:#f59e0b; color:#07090e;">ROLL A 1!</span>' : ''}
+            </div>
+            <div class="dugout-sub" style="font-weight: 700; color: #f87171;">LOCKED 🔒 (Roll 1 to enter)</div>
           </div>
         </div>
       `;
@@ -411,12 +438,9 @@ const SnakeGame = {
       return;
     }
 
-    // Play rolling sound
     SoundEngine.playDiceRoll();
-
     diceCube.classList.add('rolling');
 
-    // Rotation targets for 1 to 6
     const rotations = {
       1: { x: 0, y: 0 },
       2: { x: 0, y: 180 },
@@ -427,7 +451,6 @@ const SnakeGame = {
     };
 
     const rot = rotations[targetNumber] || { x: 0, y: 0 };
-    // Add multiple spins for dramatic 3D effect
     const spinX = rot.x + 720 + Math.floor(Math.random() * 2) * 360;
     const spinY = rot.y + 720 + Math.floor(Math.random() * 2) * 360;
 
