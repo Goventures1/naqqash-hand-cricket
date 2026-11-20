@@ -67,7 +67,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const headerLoginBtn = document.getElementById('headerLoginBtn');
   const headerAdminBtn = document.getElementById('headerAdminBtn');
   const headerStatsBtn = document.getElementById('headerStatsBtn');
+  const headerLeaderboardBtn = document.getElementById('headerLeaderboardBtn');
   const headerLogoutBtn = document.getElementById('headerLogoutBtn');
+  const onlineCountBadge = document.getElementById('onlineCountBadge');
 
   // Views
   const homeScreen = document.getElementById('homeScreen');
@@ -133,9 +135,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminCreateUserSubmitBtn = document.getElementById('adminCreateUserSubmitBtn');
   const adminCreateUserErrorMsg = document.getElementById('adminCreateUserErrorMsg');
   const allotTargetUserInput = document.getElementById('allotTargetUserInput');
+  const allotActionSelect = document.getElementById('allotActionSelect');
   const allotAmountInput = document.getElementById('allotAmountInput');
   const adminAllotCoinsSubmitBtn = document.getElementById('adminAllotCoinsSubmitBtn');
   const adminAllotErrorMsg = document.getElementById('adminAllotErrorMsg');
+
+  // Global Leaderboard Modal
+  const leaderboardModal = document.getElementById('leaderboardModal');
+  const closeLeaderboardModalBtn = document.getElementById('closeLeaderboardModalBtn');
+  const leaderboardTableBody = document.getElementById('leaderboardTableBody');
+
+  // Online Players Modal
+  const onlinePlayersModal = document.getElementById('onlinePlayersModal');
+  const closeOnlineModalBtn = document.getElementById('closeOnlineModalBtn');
+  const onlineCountTitle = document.getElementById('onlineCountTitle');
+  const onlinePlayersList = document.getElementById('onlinePlayersList');
 
   // Stats Modal
   const statsModal = document.getElementById('statsModal');
@@ -205,6 +219,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const ludoBoardMount = document.getElementById('ludoBoardMount');
   const ludoRollBtn = document.getElementById('ludoRollBtn');
 
+  // Coin Transfer Animation Elements
+  const coinTransferOverlay = document.getElementById('coinTransferOverlay');
+  const transferLoserName = document.getElementById('transferLoserName');
+  const transferLoserDelta = document.getElementById('transferLoserDelta');
+  const transferWinnerName = document.getElementById('transferWinnerName');
+  const transferWinnerDelta = document.getElementById('transferWinnerDelta');
+  const transferSubText = document.getElementById('transferSubText');
+  const transferFooterNote = document.getElementById('transferFooterNote');
+
   // ========================================================
   // INITIAL USER INTERFACE STATE
   // ========================================================
@@ -241,6 +264,21 @@ document.addEventListener('DOMContentLoaded', () => {
       headerStatsBtn.style.display = 'inline-flex';
       headerLogoutBtn.style.display = 'inline-flex';
 
+      // FORCE player name to always match their login username!
+      myPlayerName = currentUser.username;
+      localStorage.setItem('naqqash_player_name', myPlayerName);
+      if (playerNameInput) {
+        playerNameInput.value = currentUser.username;
+        playerNameInput.disabled = true;
+        playerNameInput.style.opacity = '0.75';
+        playerNameInput.title = 'Player name is locked to your Login Username';
+      }
+      if (modalPlayerNameInput) {
+        modalPlayerNameInput.value = currentUser.username;
+        modalPlayerNameInput.disabled = true;
+        modalPlayerNameInput.style.opacity = '0.75';
+      }
+
       if (currentUser.username.toLowerCase() === 'naqqash') {
         headerAdminBtn.style.display = 'inline-flex';
       } else {
@@ -253,6 +291,15 @@ document.addEventListener('DOMContentLoaded', () => {
       headerAdminBtn.style.display = 'none';
       headerStatsBtn.style.display = 'none';
       headerLogoutBtn.style.display = 'none';
+
+      if (playerNameInput) {
+        playerNameInput.disabled = false;
+        playerNameInput.style.opacity = '1';
+      }
+      if (modalPlayerNameInput) {
+        modalPlayerNameInput.disabled = false;
+        modalPlayerNameInput.style.opacity = '1';
+      }
     }
   }
 
@@ -391,6 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
   adminAllotCoinsSubmitBtn.addEventListener('click', () => {
     const targetUsername = allotTargetUserInput.value.trim();
     const amount = parseInt(allotAmountInput.value);
+    const action = allotActionSelect ? allotActionSelect.value : 'add';
 
     if (!targetUsername || isNaN(amount)) {
       adminAllotErrorMsg.textContent = 'Valid username and coin amount required!';
@@ -399,8 +447,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     adminAllotErrorMsg.style.display = 'none';
     if (socket) {
-      socket.emit('admin_allot_coins', { targetUsername, amount });
+      socket.emit('admin_allot_coins', { targetUsername, amount, action });
     }
+  });
+
+  // Quick Coin Preset Buttons
+  document.querySelectorAll('.quick-coin-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const amt = btn.getAttribute('data-amt');
+      const act = btn.getAttribute('data-act');
+      if (allotAmountInput) allotAmountInput.value = amt;
+      if (allotActionSelect) allotActionSelect.value = act;
+    });
+  });
+
+  // Global Leaderboard Modal
+  headerLeaderboardBtn.addEventListener('click', () => {
+    leaderboardModal.style.display = 'flex';
+    if (socket) socket.emit('get_leaderboard');
+  });
+
+  closeLeaderboardModalBtn.addEventListener('click', () => {
+    leaderboardModal.style.display = 'none';
+  });
+
+  // Online Players Modal
+  connStatusPill.addEventListener('click', () => {
+    onlinePlayersModal.style.display = 'flex';
+    if (socket) socket.emit('get_online_players');
+  });
+
+  closeOnlineModalBtn.addEventListener('click', () => {
+    onlinePlayersModal.style.display = 'none';
   });
 
   // Career Stats Modal
@@ -617,6 +695,24 @@ document.addEventListener('DOMContentLoaded', () => {
       switchAdminTab('users');
     });
 
+    s.on('admin_user_deleted', ({ deletedUsername, allUsers }) => {
+      alert(`🗑️ User "${deletedUsername}" has been removed successfully.`);
+      renderAdminUsersTable(allUsers);
+    });
+
+    s.on('online_count', ({ count }) => {
+      if (onlineCountBadge) onlineCountBadge.textContent = count;
+      if (onlineCountTitle) onlineCountTitle.textContent = count;
+    });
+
+    s.on('online_players_list', ({ players }) => {
+      renderOnlinePlayers(players);
+    });
+
+    s.on('leaderboard_data', ({ leaderboard }) => {
+      renderLeaderboardTable(leaderboard);
+    });
+
     // Stats event
     s.on('my_stats', ({ stats, coins }) => {
       renderStatsModal(stats, coins);
@@ -699,6 +795,46 @@ document.addEventListener('DOMContentLoaded', () => {
         showResultsModal(room);
       }
     });
+
+    // Coin Transfer Animation Event
+    s.on('coin_transfer_event', ({ transfers, reason, leaverName, winnerName, commentary }) => {
+      handleCoinTransferAnimation(transfers, reason, leaverName, winnerName);
+    });
+  }
+
+  function handleCoinTransferAnimation(transfers, reason, leaverName, winnerName) {
+    if (!coinTransferOverlay || !transfers || transfers.length === 0) return;
+    const t = transfers[0];
+
+    if (transferLoserName) transferLoserName.textContent = t.fromName || 'Loser';
+    if (transferLoserDelta) transferLoserDelta.textContent = `-${t.amount} 🪙`;
+    if (transferWinnerName) transferWinnerName.textContent = t.toName || 'Winner';
+    if (transferWinnerDelta) transferWinnerDelta.textContent = `+${t.amount} 🪙`;
+
+    if (transferSubText) {
+      if (reason === 'forfeit') {
+        transferSubText.textContent = `⚠️ ${t.fromName} match chorr kar chala gaya! Forfeit coins transfer ho gaye!`;
+      } else {
+        transferSubText.textContent = `Match khatam! ${t.amount} bet coins jeetne walay k account mein transfer ho rahay hain!`;
+      }
+    }
+
+    if (transferFooterNote) {
+      transferFooterNote.textContent = `💰 ${t.amount} coins transfer: ${t.fromName} ➔ ${t.toName}!`;
+    }
+
+    coinTransferOverlay.style.display = 'flex';
+    SoundEngine.playCoinJingle();
+
+    setTimeout(() => {
+      coinTransferOverlay.style.display = 'none';
+    }, 4200);
+  }
+
+  if (coinTransferOverlay) {
+    coinTransferOverlay.addEventListener('click', () => {
+      coinTransferOverlay.style.display = 'none';
+    });
   }
 
   bindSocketEvents(socket);
@@ -709,6 +845,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let rows = '';
     users.forEach(u => {
       const isNaqqash = u.username.toLowerCase() === 'naqqash';
+      const deleteActionHtml = isNaqqash
+        ? '<span style="color: #64748b; font-size: 0.78rem;">Super Admin</span>'
+        : `<button class="header-btn admin-del-btn" data-user="${u.username}" style="padding: 3px 8px; font-size: 0.75rem; border-color: #ef4444; color: #f87171;">🗑️ Delete</button>`;
+
       rows += `
         <tr>
           <td><b>${u.username}</b> ${isNaqqash ? '👑' : ''}</td>
@@ -716,10 +856,88 @@ document.addEventListener('DOMContentLoaded', () => {
           <td><b style="color: #fde68a;">${(u.coins || 0).toLocaleString()}</b></td>
           <td>${u.stats ? u.stats.matchesPlayed : 0}</td>
           <td>${u.stats ? u.stats.matchesWon : 0}</td>
+          <td>${deleteActionHtml}</td>
         </tr>
       `;
     });
     adminUsersTableBody.innerHTML = rows;
+
+    adminUsersTableBody.querySelectorAll('.admin-del-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-user');
+        if (confirm(`Are you sure you want to permanently delete user "${target}"?`)) {
+          if (socket) socket.emit('admin_delete_user', { targetUsername: target });
+        }
+      });
+    });
+  }
+
+  // Render Global Leaderboard & Scores
+  function renderLeaderboardTable(leaderboard) {
+    if (!leaderboardTableBody) return;
+    if (!leaderboard || leaderboard.length === 0) {
+      leaderboardTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No player records found yet.</td></tr>';
+      return;
+    }
+    let rows = '';
+    leaderboard.forEach(p => {
+      const isNaqqash = p.username.toLowerCase() === 'naqqash';
+      const isMe = currentUser && p.username.toLowerCase() === currentUser.username.toLowerCase();
+      let rankBadge = `#${p.rank}`;
+      if (p.rank === 1) rankBadge = '🥇 #1';
+      else if (p.rank === 2) rankBadge = '🥈 #2';
+      else if (p.rank === 3) rankBadge = '🥉 #3';
+
+      const st = p.stats || {};
+      rows += `
+        <tr style="${isMe ? 'background: rgba(56, 189, 248, 0.12);' : ''}">
+          <td style="font-weight: 700; color: ${p.rank <= 3 ? '#facc15' : '#94a3b8'};">${rankBadge}</td>
+          <td>
+            <b>${p.username}</b> ${isNaqqash ? '👑' : ''} ${isMe ? '<span style="color:#38bdf8; font-size: 0.72rem; font-weight: 700;">(You)</span>' : ''}
+          </td>
+          <td><b style="color: #fde68a;">${(p.coins || 0).toLocaleString()}</b></td>
+          <td><b style="color: #34d399;">${st.matchesWon || 0}</b> / <span style="color: #94a3b8;">${st.matchesPlayed || 0}</span></td>
+          <td style="color: #67e8f9;">${st.runsScored || 0}</td>
+          <td style="color: #f472b6;">${st.wicketsTaken || 0}</td>
+          <td style="color: #a78bfa;">${st.snakeWins || 0}</td>
+          <td style="color: #fb923c;">${st.ludoWins || 0}</td>
+        </tr>
+      `;
+    });
+    leaderboardTableBody.innerHTML = rows;
+  }
+
+  // Render Live Online Players
+  function renderOnlinePlayers(players) {
+    if (!onlinePlayersList) return;
+    if (!players || players.length === 0) {
+      onlinePlayersList.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 14px;">No other players online right now.</p>';
+      return;
+    }
+    let html = '';
+    players.forEach(p => {
+      const isMe = p.username && currentUser && p.username.toLowerCase() === currentUser.username.toLowerCase();
+      const isNaqqash = p.username && p.username.toLowerCase() === 'naqqash';
+      const locationText = p.roomCode ? `In Room #${p.roomCode} (${(p.gameType || 'game').toUpperCase()})` : 'In Main Lobby 🏠';
+      html += `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255,255,255,0.04); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.4rem;">${p.avatar || '🎮'}</span>
+            <div>
+              <div style="font-weight: 700; color: ${isNaqqash ? '#facc15' : '#e2e8f0'};">
+                ${p.username} ${isNaqqash ? '👑' : ''} ${isMe ? '<span style="color:#38bdf8; font-size:0.75rem;">(You)</span>' : ''}
+              </div>
+              <div style="font-size: 0.78rem; color: #94a3b8;">${locationText}</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block; box-shadow: 0 0 6px #10b981;"></span>
+            <span style="font-size: 0.78rem; color: #34d399; font-weight: 600;">ONLINE</span>
+          </div>
+        </div>
+      `;
+    });
+    onlinePlayersList.innerHTML = html;
   }
 
   // Render Career Statistics

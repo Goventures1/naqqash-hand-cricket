@@ -1521,3 +1521,147 @@ body {
 .admin-table tr:hover {
   background: rgba(255, 255, 255, 0.04);
 }
+
+
+/* ========================================================
+   ANIMATED COIN TRANSFER OVERLAY (WALLET-TO-WALLET VISUAL)
+   ======================================================== */
+.coin-transfer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.coin-transfer-card {
+  background: linear-gradient(145deg, #0f172a, #1a2234);
+  border: 2px solid var(--accent-gold);
+  border-radius: var(--radius-xl);
+  padding: 30px 24px;
+  text-align: center;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 0 50px rgba(245, 158, 11, 0.4);
+  animation: popInScale 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.transfer-header h3 {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fde68a;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+.transfer-coin-icon {
+  font-size: 2.5rem;
+  display: inline-block;
+  animation: coinBounce 0.8s infinite alternate;
+}
+
+@keyframes coinBounce {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-8px); }
+}
+
+.transfer-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.transfer-player-box {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-md);
+  padding: 14px 10px;
+  text-align: center;
+}
+
+.loser-box {
+  border: 2px solid #ef4444;
+}
+
+.winner-box {
+  border: 2px solid #10b981;
+}
+
+.box-role {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.loser-box .box-role { color: #f87171; }
+.winner-box .box-role { color: #34d399; }
+
+.box-avatar {
+  font-size: 2rem;
+  margin: 4px 0;
+}
+
+.box-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #ffffff;
+  word-break: break-word;
+}
+
+.box-delta {
+  font-size: 1.2rem;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+.box-delta.negative { color: #f87171; }
+.box-delta.positive { color: #34d399; }
+
+.flying-coins-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  min-width: 80px;
+}
+
+.coin-arrow {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: var(--accent-gold);
+}
+
+.flying-coin {
+  font-size: 1.6rem;
+  position: absolute;
+  animation: flyCoin 1.2s infinite ease-in-out;
+}
+
+.flying-coin.c1 { animation-delay: 0s; }
+.flying-coin.c2 { animation-delay: 0.4s; }
+.flying-coin.c3 { animation-delay: 0.8s; }
+
+@keyframes flyCoin {
+  0% { transform: translateX(-35px) scale(0.6); opacity: 0; }
+  30% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translateX(35px) scale(1.1); opacity: 0; }
+}
+
+.transfer-footer {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(0,0,0,0.3);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+}

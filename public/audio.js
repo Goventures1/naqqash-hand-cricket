@@ -326,6 +326,29 @@ const SoundEngine = {
 
   playCheer() {
     this.playWinnerFanfare();
+  },
+
+  // 9. COIN TRANSFER JINGLE: Shiny metallic coins clinking and cascading
+  playCoinJingle() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const frequencies = [1760, 2093, 2349, 2637, 3136, 3520];
+    for (let i = 0; i < 8; i++) {
+      const pingTime = now + (i * 0.06) + (Math.random() * 0.02);
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const f = frequencies[Math.floor(Math.random() * frequencies.length)];
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, pingTime);
+      gain.gain.setValueAtTime(0.35, pingTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, pingTime + 0.18);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(pingTime);
+      osc.stop(pingTime + 0.18);
+    }
   }
 };
 
