@@ -384,36 +384,55 @@ function distributeMatchPot(room) {
   room.pot = 0;
 }
 
-// Online Active Players Helper
+// Online Active Players Helper (Strictly shows registered User ID)
 function getOnlinePlayersList() {
   const online = [];
   const seenUsers = new Set();
 
   for (const [id, s] of io.sockets.sockets) {
-    const uname = s.user ? s.user.username : (s.playerName || 'Guest');
+    let uname = null;
+    let role = 'guest';
+    let coins = 0;
+    let avatar = s.avatar || '🎮';
+
+    if (s.user && s.user.username) {
+      uname = s.user.username;
+      role = s.user.role;
+      const fresh = userManager.getUser(uname);
+      if (fresh) {
+        coins = fresh.coins;
+        role = fresh.role;
+      }
+    } else if (s.playerName && s.playerName !== 'Player' && s.playerName !== 'Guest') {
+      uname = s.playerName;
+    }
+
+    // Skip unauthenticated anonymous connections so "Guest" never appears in online list
+    if (!uname) continue;
+
     const uKey = uname.toLowerCase();
     if (!seenUsers.has(uKey)) {
       seenUsers.add(uKey);
       let roomCode = null;
       let gameType = null;
       for (const r of rooms.values()) {
-        if (r.players.some(p => p.id === id) || (s.user && r.players.some(p => p.username === s.user.username))) {
+        if (r.players.some(p => p.id === id || (p.username && p.username.toLowerCase() === uKey))) {
           roomCode = r.code;
           gameType = r.gameType;
           break;
         }
       }
-      const uData = s.user ? userManager.getUser(s.user.username) : null;
+
       online.push({
         id,
         username: uname,
-        name: s.user ? s.user.username : (s.playerName || 'Player'),
-        avatar: s.avatar || (s.user ? '🐯' : '👤'),
-        role: s.user ? s.user.role : 'guest',
-        coins: uData ? (uData.coins || 0) : 0,
+        name: uname,
+        avatar: avatar,
+        role: role,
+        coins: coins,
         roomCode,
         gameType,
-        status: roomCode ? `Playing ${gameType ? gameType.toUpperCase() : 'GAME'} (${roomCode})` : 'In Lobby / Home'
+        status: roomCode ? `In Room #${roomCode} (${gameType ? gameType.toUpperCase() : 'GAME'})` : 'In Main Lobby 🏠'
       });
     }
   }
@@ -432,6 +451,24 @@ io.on('connection', (socket) => {
   // ========================================================
   // AUTHENTICATION & ADMIN NAQQASH ACTIONS
   // ========================================================
+  socket.on('auth_restore', ({ username }) => {
+    if (!username) return;
+    const u = userManager.getUser(username);
+    if (u) {
+      currentUser = {
+        username: u.username,
+        role: u.role,
+        coins: u.coins,
+        stats: u.stats
+      };
+      socket.user = currentUser;
+      socket.playerName = u.username;
+      socket.emit('auth_success', { user: currentUser });
+      console.log(`🔄 Session restored: ${currentUser.username}`);
+      io.emit('online_count', { count: getOnlinePlayersList().length });
+    }
+  });
+
   socket.on('auth_login', ({ username, password }) => {
     const res = userManager.login(username, password);
     if (!res.success) {
@@ -439,6 +476,7 @@ io.on('connection', (socket) => {
     }
     currentUser = res.user;
     socket.user = currentUser;
+    socket.playerName = currentUser.username;
     socket.emit('auth_success', { user: currentUser });
     console.log(`🔑 Login successful: ${currentUser.username} (${currentUser.role})`);
     io.emit('online_count', { count: getOnlinePlayersList().length });
@@ -974,16 +1012,22 @@ io.on('connection', (socket) => {
   socket.on('call_toss', ({ choice }) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
-    if (!room || room.gamePhase !== 'toss') return;
+    if (!room || room.gamePhase !== 'toss' || !room.toss) return;
+    if (room.toss.winnerKey) return; // Prevent duplicate calls
+
     const tossResult = Math.random() < 0.5 ? 'heads' : 'tails';
+    const isTeam1 = room.team1.players.some(p => p.id === socket.id);
+    const callerTeamKey = isTeam1 ? 'team1' : 'team2';
+    const otherTeamKey = callerTeamKey === 'team1' ? 'team2' : 'team1';
+
     const won = choice === tossResult;
-    const winnerKey = won ? 'team2' : 'team1';
+    const winnerKey = won ? callerTeamKey : otherTeamKey;
 
     room.toss.coinResult = tossResult;
     room.toss.winnerKey = winnerKey;
     room.toss.winnerName = room[winnerKey].name;
     room.toss.coinState = 'done';
-    room.commentary.unshift(`🪙 Toss result is ${tossResult.toUpperCase()}! ${room[winnerKey].name} won the toss!`);
+    room.commentary.unshift(`🪙 Coin result: ${tossResult.toUpperCase()}! ${room[winnerKey].name} won the toss!`);
 
     io.to(userRoomCode).emit('toss_completed', {
       tossResult,
@@ -991,16 +1035,23 @@ io.on('connection', (socket) => {
       winnerName: room[winnerKey].name,
       room: getPublicRoomState(room)
     });
+    io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
   socket.on('choose_toss_decision', ({ decision }) => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
-    if (!room || room.gamePhase !== 'toss' || !room.toss.winnerKey) return;
+    if (!room || room.gamePhase !== 'toss' || !room.toss || !room.toss.winnerKey) return;
 
-    room.toss.decision = decision;
     const winnerKey = room.toss.winnerKey;
+    // Ensure decision maker belongs to the winning team or is host
+    const isAllowed = room[winnerKey].players.some(p => p.id === socket.id) || room.hostId === socket.id;
+    if (!isAllowed) {
+      return socket.emit('error_msg', 'Only the toss winning team can choose Bat or Bowl!');
+    }
+
     const otherKey = winnerKey === 'team1' ? 'team2' : 'team1';
+    room.toss.decision = decision;
 
     if (decision === 'bat') {
       room.battingTeamKey = winnerKey;
@@ -1016,7 +1067,7 @@ io.on('connection', (socket) => {
     room.currentBowlerIndex = 0;
     updateCricketActivePlayers(room);
 
-    room.commentary.unshift(`🏏 ${room[winnerKey].name} chose to ${decision.toUpperCase()} first! Match starting!`);
+    room.commentary.unshift(`🏏 ${room[winnerKey].name} ne toss jeet kar pehle ${decision === 'bat' ? 'BATTING' : 'BOWLING'} chuni! Match Shuru!`);
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
@@ -1176,6 +1227,10 @@ io.on('connection', (socket) => {
       result: room.lastBallResult,
       room: getPublicRoomState(room)
     });
+
+    if (room.gamePhase === 'match_over') {
+      io.to(room.code).emit('room_updated', { room: getPublicRoomState(room) });
+    }
   }
 
   // Live Chat Reaction
@@ -1188,7 +1243,10 @@ io.on('connection', (socket) => {
   socket.on('restart_match', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
-    if (!room || room.hostId !== socket.id) return;
+    if (!room) return;
+    const isHost = room.hostId === socket.id;
+    const isPlayer = room.players.some(p => p.id === socket.id);
+    if (!isHost && !isPlayer) return;
 
     room.gamePhase = 'lobby';
     room.winner = null;
