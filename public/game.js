@@ -679,10 +679,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     s.on('user_coins_changed', ({ username, coins }) => {
-      if (currentUser && currentUser.username.toLowerCase() === username.toLowerCase()) {
-        currentUser.coins = coins;
-        localStorage.setItem('naqqash_auth_user', JSON.stringify(currentUser));
-        updateAuthUI();
+      const myName = (currentUser && currentUser.username) || myPlayerName || (playerNameInput && playerNameInput.value);
+      if (myName && username && myName.trim().toLowerCase() === username.trim().toLowerCase()) {
+        if (currentUser) {
+          currentUser.coins = coins;
+          localStorage.setItem('naqqash_auth_user', JSON.stringify(currentUser));
+        }
+        localStorage.setItem('naqqash_user_coins', coins);
+        if (headerCoinsPill) headerCoinsPill.style.display = 'inline-flex';
+        if (headerCoinsDisplay) headerCoinsDisplay.textContent = Number(coins || 0).toLocaleString();
       }
     });
 
@@ -781,11 +786,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     s.on('innings_break', ({ target, newBattingTeam, newBowlingTeam, room }) => {
       currentRoom = room;
-      handleInningsBreak(target, newBattingTeam, newBowlingTeam, room);
+      if (currentBallIsOut) {
+        pendingInningsBreak = { target, newBattingTeam, newBowlingTeam, room };
+      } else {
+        handleInningsBreak(target, newBattingTeam, newBowlingTeam, room);
+      }
     });
 
     s.on('match_restarted', ({ room }) => {
       currentRoom = room;
+      currentBallIsOut = false;
+      pendingInningsBreak = null;
+      pendingCoinTransfer = null;
       resetCricketArenaDOM();
       updateRoomState(room);
     });
@@ -814,19 +826,26 @@ document.addEventListener('DOMContentLoaded', () => {
       if (typeof LudoClient !== 'undefined') {
         LudoClient.updateTokens(room.ludoState, socket.id);
       }
-      if (room.gamePhase === 'match_over') {
+      if (!currentBallIsOut && room.gamePhase === 'match_over') {
         showResultsModal(room);
       }
     });
 
     // Coin Transfer Animation Event
     s.on('coin_transfer_event', ({ transfers, reason, leaverName, winnerName, commentary }) => {
-      handleCoinTransferAnimation(transfers, reason, leaverName, winnerName);
+      if (currentBallIsOut) {
+        pendingCoinTransfer = { transfers, reason, leaverName, winnerName };
+      } else {
+        handleCoinTransferAnimation(transfers, reason, leaverName, winnerName);
+      }
     });
   }
 
-  function handleCoinTransferAnimation(transfers, reason, leaverName, winnerName) {
-    if (!coinTransferOverlay || !transfers || transfers.length === 0) return;
+  function handleCoinTransferAnimation(transfers, reason, leaverName, winnerName, onDone) {
+    if (!coinTransferOverlay || !transfers || transfers.length === 0) {
+      if (onDone) onDone();
+      return;
+    }
     const t = transfers[0];
 
     if (transferLoserName) transferLoserName.textContent = t.fromName || 'Loser';
@@ -851,7 +870,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => {
       coinTransferOverlay.style.display = 'none';
-    }, 4200);
+      if (onDone) onDone();
+    }, 3800);
   }
 
   if (coinTransferOverlay) {
@@ -1277,7 +1297,9 @@ document.addEventListener('DOMContentLoaded', () => {
           cricketWinnerSub.textContent = room.winner ? (room.winner.margin || 'Victory!') : '';
         }
       }
-      showResultsModal(room);
+      if (!currentBallIsOut) {
+        showResultsModal(room);
+      }
     } else {
       cricketTossSection.style.display = 'none';
       if (cricketMatchOverCard) cricketMatchOverCard.style.display = 'none';
@@ -1286,39 +1308,90 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Big Ball Result Popup Trigger
-  function showBigBallPopup(result) {
-    if (!cricketBallPopup) return;
+  // OUT Popup & Sequential Match Over State
+  let currentBallIsOut = false;
+  let pendingInningsBreak = null;
+  let pendingCoinTransfer = null;
+  let ballPopupTimeout = null;
 
-    ballResultTitle.textContent = result.popupTitle || (result.isOut ? '🔴 WICKET! OUT!' : `⚡ ${result.runs} RUNS!`);
-    ballResultSub.textContent = result.popupDetail || (result.isOut ? 'Both picked identical gestures!' : `Batsman scored ${result.runs} runs!`);
+  // Big Ball Result Popup Trigger with Sequential Completion Callback
+  function showBigBallPopup(result, onDone) {
+    if (!cricketBallPopup) {
+      if (onDone) onDone();
+      return;
+    }
+
+    if (ballPopupTimeout) {
+      clearTimeout(ballPopupTimeout);
+      ballPopupTimeout = null;
+    }
+
+    const isOut = !!(result && result.isOut);
+    const isSix = !!(result && (result.isSix || result.runs === 6));
+    const isPunch = !!(result && (result.isPunch || result.runs === 10));
+    const ballBadge = document.getElementById('ballResultBadge');
+
+    if (isOut) {
+      if (ballBadge) {
+        ballBadge.textContent = '🔴 WICKET FALLEN!';
+        ballBadge.style.background = 'rgba(239, 68, 68, 0.25)';
+        ballBadge.style.color = '#f87171';
+      }
+      ballResultTitle.textContent = '🔴 WICKET! OUT!';
+      ballResultTitle.style.color = '#f87171';
+      ballResultSub.textContent = `Both picked gesture ${result.batMove}! ${result.batsmanName || 'Batsman'} is OUT!`;
+      ballResultCard.style.borderColor = '#ef4444';
+      ballResultCard.style.boxShadow = '0 0 60px rgba(239, 68, 68, 0.7)';
+      ballResultCard.style.background = 'linear-gradient(145deg, #1c0a0a, #2a0e0e)';
+    } else if (isSix || isPunch) {
+      if (ballBadge) {
+        ballBadge.textContent = isPunch ? '💥 MAXIMUM PUNCH!' : '🔥 HUGE SIX!';
+        ballBadge.style.background = 'rgba(245, 158, 11, 0.25)';
+        ballBadge.style.color = '#fde68a';
+      }
+      ballResultTitle.textContent = isPunch ? '💥 10 RUNS PUNCH!' : '🔥 6 RUNS (THUMBS UP)!';
+      ballResultTitle.style.color = '#fde68a';
+      ballResultSub.textContent = `Batsman: ${result.batMove} | Bowler: ${result.bowlMove}`;
+      ballResultCard.style.borderColor = '#f59e0b';
+      ballResultCard.style.boxShadow = '0 0 50px rgba(245, 158, 11, 0.5)';
+      ballResultCard.style.background = 'linear-gradient(145deg, #0b1120, #1e293b)';
+    } else {
+      if (ballBadge) {
+        ballBadge.textContent = 'BALL RESULT';
+        ballBadge.style.background = 'rgba(0, 240, 255, 0.2)';
+        ballBadge.style.color = '#00f0ff';
+      }
+      ballResultTitle.textContent = `⚡ ${result.runs} RUN${result.runs > 1 ? 'S' : ''}!`;
+      ballResultTitle.style.color = '#ffffff';
+      ballResultSub.textContent = `Batsman: ${result.batMove} | Bowler: ${result.bowlMove}`;
+      ballResultCard.style.borderColor = '#00f0ff';
+      ballResultCard.style.boxShadow = '0 0 50px rgba(0, 240, 255, 0.4)';
+      ballResultCard.style.background = 'linear-gradient(145deg, #0b1120, #1e293b)';
+    }
 
     popupBatMove.textContent = result.batMove === 6 ? '👍 6' : (result.batMove === 10 ? '👊 10' : result.batMove);
     popupBowlMove.textContent = result.bowlMove === 6 ? '👍 6' : (result.bowlMove === 10 ? '👊 10' : result.bowlMove);
 
-    if (result.isOut) {
-      ballResultCard.style.borderColor = '#ef4444';
-      ballResultCard.style.boxShadow = '0 0 50px rgba(239, 68, 68, 0.5)';
-      ballResultTitle.style.color = '#f87171';
-    } else if (result.isSix || result.isPunch) {
-      ballResultCard.style.borderColor = '#f59e0b';
-      ballResultCard.style.boxShadow = '0 0 50px rgba(245, 158, 11, 0.5)';
-      ballResultTitle.style.color = '#fde68a';
-    } else {
-      ballResultCard.style.borderColor = '#00f0ff';
-      ballResultCard.style.boxShadow = '0 0 50px rgba(0, 240, 255, 0.4)';
-      ballResultTitle.style.color = '#ffffff';
-    }
-
     cricketBallPopup.style.display = 'flex';
 
-    // Auto dismiss after 2.6 seconds
-    setTimeout(() => {
+    // OUT popup gets 3000ms duration, regular ball gets 2000ms
+    const duration = isOut ? 3000 : 2000;
+    ballPopupTimeout = setTimeout(() => {
       cricketBallPopup.style.display = 'none';
-    }, 2600);
+      ballPopupTimeout = null;
+      if (onDone) onDone();
+    }, duration);
   }
 
+  // Dismiss on click after minimum view
+  let lastPopupOpenTime = 0;
   cricketBallPopup.addEventListener('click', () => {
+    // Prevent accidental instant dismiss during fast taps
+    if (Date.now() - lastPopupOpenTime < 1400) return;
+    if (ballPopupTimeout) {
+      clearTimeout(ballPopupTimeout);
+      ballPopupTimeout = null;
+    }
     cricketBallPopup.style.display = 'none';
   });
 
@@ -1339,27 +1412,64 @@ document.addEventListener('DOMContentLoaded', () => {
   chooseBowlBtn.addEventListener('click', () => { if (socket) socket.emit('choose_toss_decision', { decision: 'bowl' }); });
 
   function handleCricketBall(result, room) {
-    if (typeof HandRenderer !== 'undefined' && result) {
+    if (!result) return;
+    lastPopupOpenTime = Date.now();
+
+    if (typeof HandRenderer !== 'undefined') {
       batsmanHandMount.innerHTML = HandRenderer.getHandSVG(result.batMove, 'batsman', true);
       bowlerHandMount.innerHTML = HandRenderer.getHandSVG(result.bowlMove, 'bowler', true);
     }
 
-    if (result && result.isOut) {
+    if (result.isOut) {
+      currentBallIsOut = true;
       SoundEngine.playOutWhistle();
+
+      // Show OUT badge on the pitch batsman card
+      if (cricketBatsmanName) {
+        cricketBatsmanName.innerHTML = `<span style="color: #ef4444; font-weight: 900;">${result.batsmanName || 'Batsman'} (OUT! 🔴)</span>`;
+      }
+      if (cricketPicksIndicator) {
+        cricketPicksIndicator.innerHTML = '<span style="color: #ef4444; font-weight: 900;">🔴 WICKET! OUT!</span>';
+      }
+
+      showBigBallPopup(result, () => {
+        currentBallIsOut = false;
+
+        if (room.gamePhase === 'match_over') {
+          transitionToMatchOver(room);
+        } else if (pendingInningsBreak) {
+          const { target, newBattingTeam, newBowlingTeam, room: ibRoom } = pendingInningsBreak;
+          pendingInningsBreak = null;
+          handleInningsBreak(target, newBattingTeam, newBowlingTeam, ibRoom);
+        } else {
+          updateCricketArenaUI(room);
+        }
+      });
     } else {
+      currentBallIsOut = false;
       SoundEngine.playBatShot();
+
+      showBigBallPopup(result, () => {
+        if (room.gamePhase === 'match_over') {
+          transitionToMatchOver(room);
+        } else {
+          updateCricketArenaUI(room);
+        }
+      });
     }
+  }
 
-    // Trigger Big Ball Result Popup!
-    if (result) showBigBallPopup(result);
-
+  function transitionToMatchOver(room) {
     updateCricketArenaUI(room);
 
-    // If match finished on this ball, display Results Modal with PLAY AGAIN button!
-    if (room.gamePhase === 'match_over') {
-      setTimeout(() => {
+    if (pendingCoinTransfer) {
+      const { transfers, reason, leaverName, winnerName } = pendingCoinTransfer;
+      pendingCoinTransfer = null;
+      handleCoinTransferAnimation(transfers, reason, leaverName, winnerName, () => {
         showResultsModal(room);
-      }, 2400);
+      });
+    } else {
+      showResultsModal(room);
     }
   }
 

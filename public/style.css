@@ -1328,8 +1328,8 @@ body {
 .ball-result-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2000;
-  background: rgba(0, 0, 0, 0.8);
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   display: flex;
@@ -1523,8 +1523,8 @@ body {
 .coin-transfer-overlay {
   position: fixed;
   inset: 0;
-  z-index: 3000;
-  background: rgba(0, 0, 0, 0.85);
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
