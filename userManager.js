@@ -269,8 +269,20 @@ class UserManager {
     };
   }
 
-  // Record game stats
-  recordMatch(username, { gameType, won, runs = 0, wickets = 0 }) {
+  // Add in-game cricket runs / wickets without touching matchesPlayed
+  addCricketInGameStats(username, { runs = 0, wickets = 0 }) {
+    const u = this.users.get((username || '').trim().toLowerCase());
+    if (!u) return;
+    if (!u.stats) {
+      u.stats = { matchesPlayed: 0, matchesWon: 0, matchesLost: 0, cricketRuns: 0, cricketWickets: 0, snakeWins: 0, ludoWins: 0, coinsWon: 0, coinsLost: 0 };
+    }
+    if (runs) u.stats.cricketRuns = (u.stats.cricketRuns || 0) + runs;
+    if (wickets) u.stats.cricketWickets = (u.stats.cricketWickets || 0) + wickets;
+    this.save();
+  }
+
+  // Record match finish outcome (called ONCE per completed match)
+  recordMatchOutcome(username, { gameType, won }) {
     const u = this.users.get((username || '').trim().toLowerCase());
     if (!u) return;
 
@@ -286,11 +298,17 @@ class UserManager {
     } else {
       u.stats.matchesLost = (u.stats.matchesLost || 0) + 1;
     }
-
-    if (runs) u.stats.cricketRuns = (u.stats.cricketRuns || 0) + runs;
-    if (wickets) u.stats.cricketWickets = (u.stats.cricketWickets || 0) + wickets;
-
     this.save();
+  }
+
+  // Legacy compatibility helper
+  recordMatch(username, { gameType, won, runs = 0, wickets = 0 }) {
+    if (runs || wickets) {
+      this.addCricketInGameStats(username, { runs, wickets });
+    }
+    if (won !== undefined) {
+      this.recordMatchOutcome(username, { gameType, won });
+    }
   }
 
   // List all users for Naqqash's Admin Panel

@@ -272,6 +272,15 @@ function handlePlayerForfeit(room, leaverSocketId) {
 }
 
 // Distribute Bet Stake directly from Losers to Winners
+function resolvePlayerUsername(p) {
+  if (!p) return null;
+  if (p.username && userManager.getUser(p.username)) return p.username;
+  if (p.name && userManager.getUser(p.name)) return p.name;
+  const s = io.sockets.sockets.get(p.id);
+  if (s && s.user && s.user.username) return s.user.username;
+  return null;
+}
+
 function distributeMatchPot(room) {
   const stake = room.betAmount || 0;
   const transfers = [];
@@ -280,42 +289,48 @@ function distributeMatchPot(room) {
     if (!room.winner || room.winner.key === 'tie') {
       room.commentary.unshift(`🤝 Match tied! No coins transferred.`);
     } else {
-      const winTeam = room[room.winner.key];
-      const loseTeamKey = room.winner.key === 'team1' ? 'team2' : 'team1';
+      const winTeamKey = room.winner.key;
+      const loseTeamKey = winTeamKey === 'team1' ? 'team2' : 'team1';
+      const winTeam = room[winTeamKey];
       const loseTeam = room[loseTeamKey];
 
-      if (winTeam && loseTeam && stake > 0) {
-        const winUsers = winTeam.players.filter(p => p.username);
-        const loseUsers = loseTeam.players.filter(p => p.username);
+      if (winTeam && loseTeam) {
+        const winUsers = winTeam.players.map(p => ({ p, u: resolvePlayerUsername(p) })).filter(x => x.u);
+        const loseUsers = loseTeam.players.map(p => ({ p, u: resolvePlayerUsername(p) })).filter(x => x.u);
 
-        if (winUsers.length === 1 && loseUsers.length === 1) {
-          const res = userManager.transferCoins(loseUsers[0].username, winUsers[0].username, stake);
-          if (res.success) {
-            transfers.push({
-              fromName: loseUsers[0].name,
-              fromUsername: loseUsers[0].username,
-              toName: winUsers[0].name,
-              toUsername: winUsers[0].username,
-              amount: res.amount
-            });
-            io.emit('user_coins_changed', { username: loseUsers[0].username, coins: res.fromNewCoins });
-            io.emit('user_coins_changed', { username: winUsers[0].username, coins: res.toNewCoins });
-          }
-        } else if (winUsers.length > 0 && loseUsers.length > 0) {
-          const totalLost = loseUsers.length * stake;
-          const share = Math.floor(totalLost / winUsers.length);
-          loseUsers.forEach(lp => {
-            userManager.adjustCoins(lp.username, -stake);
-            io.emit('user_coins_changed', { username: lp.username, coins: userManager.getUser(lp.username).coins });
+        // Record career match outcome for both teams
+        winUsers.forEach(({ u }) => {
+          userManager.recordMatchOutcome(u, { gameType: 'cricket', won: true });
+        });
+        loseUsers.forEach(({ u }) => {
+          userManager.recordMatchOutcome(u, { gameType: 'cricket', won: false });
+        });
+
+        if (stake > 0 && winUsers.length > 0 && loseUsers.length > 0) {
+          // Har harne walay player ke account se betting coins deduct honge
+          let totalLostPot = 0;
+          loseUsers.forEach(({ p, u }) => {
+            const userObj = userManager.getUser(u);
+            const toDeduct = Math.min(userObj ? userObj.coins : 0, stake);
+            if (toDeduct > 0) {
+              userManager.adjustCoins(u, -toDeduct);
+              totalLostPot += toDeduct;
+              io.emit('user_coins_changed', { username: u, coins: userManager.getUser(u).coins });
+            }
           });
-          winUsers.forEach(wp => {
-            userManager.adjustCoins(wp.username, share);
-            io.emit('user_coins_changed', { username: wp.username, coins: userManager.getUser(wp.username).coins });
+
+          // Jeetne wali team ke players mein barabar share divide hoga
+          const share = Math.floor(totalLostPot / winUsers.length);
+          winUsers.forEach(({ p, u }) => {
+            if (share > 0) {
+              userManager.adjustCoins(u, share);
+              io.emit('user_coins_changed', { username: u, coins: userManager.getUser(u).coins });
+            }
             transfers.push({
               fromName: loseTeam.name,
-              fromUsername: 'Team',
-              toName: wp.name,
-              toUsername: wp.username,
+              fromUsername: 'Losing Team',
+              toName: p.name || u,
+              toUsername: u,
               amount: share
             });
           });
@@ -324,52 +339,66 @@ function distributeMatchPot(room) {
     }
   } else if (room.gameType === 'snake') {
     const champ = room.snakeState.winners && room.snakeState.winners[0];
-    if (champ && stake > 0) {
+    if (champ) {
       const winnerPlayer = room.players.find(p => p.id === champ.id);
       const losers = room.players.filter(p => p.id !== champ.id);
+      const champUser = resolvePlayerUsername(winnerPlayer);
 
-      if (winnerPlayer && winnerPlayer.username) {
-        losers.forEach(lp => {
-          if (lp.username) {
-            const res = userManager.transferCoins(lp.username, winnerPlayer.username, stake);
+      if (champUser) {
+        userManager.recordMatchOutcome(champUser, { gameType: 'snake', won: true });
+      }
+
+      losers.forEach(lp => {
+        const loseUser = resolvePlayerUsername(lp);
+        if (loseUser) {
+          userManager.recordMatchOutcome(loseUser, { gameType: 'snake', won: false });
+          if (stake > 0 && champUser) {
+            const res = userManager.transferCoins(loseUser, champUser, stake);
             if (res.success) {
               transfers.push({
                 fromName: lp.name,
-                fromUsername: lp.username,
+                fromUsername: loseUser,
                 toName: winnerPlayer.name,
-                toUsername: winnerPlayer.username,
+                toUsername: champUser,
                 amount: res.amount
               });
-              io.emit('user_coins_changed', { username: lp.username, coins: res.fromNewCoins });
-              io.emit('user_coins_changed', { username: winnerPlayer.username, coins: res.toNewCoins });
+              io.emit('user_coins_changed', { username: loseUser, coins: res.fromNewCoins });
+              io.emit('user_coins_changed', { username: champUser, coins: res.toNewCoins });
             }
           }
-        });
-      }
+        }
+      });
     }
   } else if (room.gameType === 'ludo') {
-    if (room.ludoState && room.ludoState.winner && stake > 0) {
+    if (room.ludoState && room.ludoState.winner) {
       const winnerPlayer = room.players.find(p => p.id === room.ludoState.winner.id);
       const losers = room.players.filter(p => p.id !== room.ludoState.winner.id);
+      const winUser = resolvePlayerUsername(winnerPlayer);
 
-      if (winnerPlayer && winnerPlayer.username) {
-        losers.forEach(lp => {
-          if (lp.username) {
-            const res = userManager.transferCoins(lp.username, winnerPlayer.username, stake);
+      if (winUser) {
+        userManager.recordMatchOutcome(winUser, { gameType: 'ludo', won: true });
+      }
+
+      losers.forEach(lp => {
+        const loseUser = resolvePlayerUsername(lp);
+        if (loseUser) {
+          userManager.recordMatchOutcome(loseUser, { gameType: 'ludo', won: false });
+          if (stake > 0 && winUser) {
+            const res = userManager.transferCoins(loseUser, winUser, stake);
             if (res.success) {
               transfers.push({
                 fromName: lp.name,
-                fromUsername: lp.username,
+                fromUsername: loseUser,
                 toName: winnerPlayer.name,
-                toUsername: winnerPlayer.username,
+                toUsername: winUser,
                 amount: res.amount
               });
-              io.emit('user_coins_changed', { username: lp.username, coins: res.fromNewCoins });
-              io.emit('user_coins_changed', { username: winnerPlayer.username, coins: res.toNewCoins });
+              io.emit('user_coins_changed', { username: loseUser, coins: res.fromNewCoins });
+              io.emit('user_coins_changed', { username: winUser, coins: res.toNewCoins });
             }
           }
-        });
-      }
+        }
+      });
     }
   }
 
@@ -1133,8 +1162,9 @@ io.on('connection', (socket) => {
       popupTitle = '🔴 WICKET! OUT!';
       popupDetail = `Both picked ${batMove}! ${batsman ? batsman.name : 'Batsman'} is OUT!`;
       commentaryMsg = `🔴 OUT! Both picked ${batMove}! ${batsman ? batsman.name : 'Batsman'} is OUT!`;
-      if (bowler && bowler.username) {
-        userManager.recordMatch(bowler.username, { gameType: 'cricket', won: false, wickets: 1 });
+      const bowlerU = resolvePlayerUsername(bowler);
+      if (bowlerU) {
+        userManager.addCricketInGameStats(bowlerU, { wickets: 1 });
       }
     } else {
       runs = batMove;
@@ -1142,8 +1172,9 @@ io.on('connection', (socket) => {
       if (batsman) {
         batsman.score = (batsman.score || 0) + runs;
         batsman.balls = (batsman.balls || 0) + 1;
-        if (batsman.username) {
-          userManager.recordMatch(batsman.username, { gameType: 'cricket', won: false, runs });
+        const batsmanU = resolvePlayerUsername(batsman);
+        if (batsmanU) {
+          userManager.addCricketInGameStats(batsmanU, { runs });
         }
       }
 
@@ -1163,10 +1194,15 @@ io.on('connection', (socket) => {
     }
 
     batTeam.balls++;
-    if (batTeam.balls === 6) {
+    const isOverComplete = batTeam.balls === 6;
+    if (isOverComplete) {
       batTeam.overs++;
       batTeam.balls = 0;
       room.currentBowlerIndex++;
+      updateCricketActivePlayers(room);
+      room.commentary.unshift(`🏁 Over complete! (${batTeam.overs} Overs: ${batTeam.score}/${batTeam.wickets}). New bowler ${room.currentBowler ? room.currentBowler.name : ''} attacks!`);
+    } else if (isOut) {
+      updateCricketActivePlayers(room);
     }
 
     room.lastBallResult = {
@@ -1196,9 +1232,15 @@ io.on('connection', (socket) => {
         room.currentBatsmanIndex = 0;
         room.currentBowlerIndex = 0;
         updateCricketActivePlayers(room);
-        room.commentary.unshift(`🏁 Innings 1 Over! Target is ${room.target} runs!`);
-      } else {
-        if (isOut) updateCricketActivePlayers(room);
+        room.pendingPicks = { batMove: null, bowlMove: null };
+        room.commentary.unshift(`🏁 1st Innings Over! Target: ${room.target} runs! ${room[room.battingTeamKey].name} is now BATTING!`);
+
+        io.to(room.code).emit('innings_break', {
+          target: room.target,
+          newBattingTeam: room[room.battingTeamKey].name,
+          newBowlingTeam: room[room.bowlingTeamKey].name,
+          room: getPublicRoomState(room)
+        });
       }
     } else {
       // Innings 2: Chase
@@ -1211,15 +1253,13 @@ io.on('connection', (socket) => {
       } else if (allOut || oversDone) {
         room.gamePhase = 'match_over';
         if (batTeam.score === room.target - 1) {
-          room.winner = { name: 'MATCH TIED!', key: 'tie' };
+          room.winner = { name: 'MATCH TIED!', key: 'tie', margin: 'Equal scores!' };
           room.commentary.unshift(`🤝 MATCH TIED! Both teams scored equal runs!`);
         } else {
           room.winner = { name: bowlTeam.name, key: room.bowlingTeamKey, margin: `${(room.target - 1) - batTeam.score} runs` };
           room.commentary.unshift(`🏆 ${bowlTeam.name} WON THE MATCH by defending the target!`);
         }
         distributeMatchPot(room);
-      } else {
-        if (isOut) updateCricketActivePlayers(room);
       }
     }
 
@@ -1286,14 +1326,20 @@ io.on('connection', (socket) => {
       room.team2.players.forEach(p => { p.score = 0; p.balls = 0; p.isOut = false; });
       room.target = null;
       room.toss = null;
+      room.currentInnings = 1;
+      room.currentBatsmanIndex = 0;
+      room.currentBowlerIndex = 0;
+      room.currentBatsman = null;
+      room.currentBowler = null;
       room.lastBallResult = null;
       room.pendingPicks = { batMove: null, bowlMove: null };
-      room.commentary.unshift('🔄 Cricket match reset for a new match!');
+      room.commentary = ['🔄 Cricket match reset! Get ready for a fresh match!'];
     } else if (room.gameType === 'ludo') {
       room.ludoState = ludoEngine.createInitialState(room.players);
-      room.commentary.unshift('🔄 Classic Ludo reset for a new game!');
+      room.commentary = ['🔄 Classic Ludo reset for a new game!'];
     }
 
+    io.to(userRoomCode).emit('match_restarted', { room: getPublicRoomState(room) });
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
