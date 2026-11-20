@@ -307,8 +307,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // If saved user, attempt re-login on connect
   function autoRelogin() {
-    if (currentUser && socket && socket.connected) {
-      // Fetch fresh stats / coins
+    if (currentUser && currentUser.username && socket && socket.connected) {
+      socket.emit('auth_restore', { username: currentUser.username });
       socket.emit('get_my_stats');
     }
   }
@@ -1051,9 +1051,12 @@ document.addEventListener('DOMContentLoaded', () => {
       updateLudoArenaUI(room);
     }
 
-    // Check Finished state
+    // Check Finished or Lobby state
     if (room.gamePhase === 'match_over') {
       showResultsModal(room);
+    } else if (room.gamePhase === 'lobby') {
+      if (gameResultsModal) gameResultsModal.style.display = 'none';
+      showView('roomLobbyView');
     }
   }
 
@@ -1191,10 +1194,59 @@ document.addEventListener('DOMContentLoaded', () => {
       cricketTossSection.style.display = 'block';
       cricketHandsStage.style.display = 'none';
       cricketPickSection.style.display = 'none';
+
+      const toss = room.toss || {};
+      const tossPromptEl = document.getElementById('cricketTossPrompt');
+
+      if (!toss.winnerKey) {
+        // Coin waiting to be called
+        if (tossPromptEl) {
+          tossPromptEl.innerHTML = `
+            <div style="font-size: 1.2rem; color: #fde68a; font-weight: 800; margin-bottom: 6px;">🪙 COIN TOSS!</div>
+            <div style="font-size: 0.92rem; color: #cbd5e1;">HEADS ya TAILS par click karke Toss call karein:</div>
+          `;
+        }
+        cricketTossButtons.style.display = 'flex';
+        cricketTossDecisionButtons.style.display = 'none';
+      } else {
+        // Toss completed!
+        const isWinnerTeam = (room[toss.winnerKey] && room[toss.winnerKey].players.some(p => p.id === socket.id)) || room.hostId === socket.id;
+        if (isWinnerTeam) {
+          if (tossPromptEl) {
+            tossPromptEl.innerHTML = `
+              <div style="font-size: 1.3rem; color: #34d399; font-weight: 900; margin-bottom: 6px;">
+                🎉 AAP TOSS JEET GAYE! (${(toss.coinResult || '').toUpperCase()})
+              </div>
+              <div style="font-size: 0.95rem; color: #fde68a; font-weight: 700;">
+                Pehle BATTING karni hai ya BOWLING? Choose karein:
+              </div>
+            `;
+          }
+          cricketTossButtons.style.display = 'none';
+          cricketTossDecisionButtons.style.display = 'flex';
+        } else {
+          if (tossPromptEl) {
+            tossPromptEl.innerHTML = `
+              <div style="font-size: 1.2rem; color: #38bdf8; font-weight: 800; margin-bottom: 6px;">
+                🪙 ${toss.winnerName || 'Opponent'} Toss Jeet Gaya! (${(toss.coinResult || '').toUpperCase()})
+              </div>
+              <div style="font-size: 0.92rem; color: #94a3b8;">
+                Unke Batting / Bowling faislay ka intezar ho raha hai...
+              </div>
+            `;
+          }
+          cricketTossButtons.style.display = 'none';
+          cricketTossDecisionButtons.style.display = 'none';
+        }
+      }
     } else {
       cricketTossSection.style.display = 'none';
       cricketHandsStage.style.display = 'flex';
       cricketPickSection.style.display = 'block';
+    }
+
+    if (room.gamePhase === 'match_over') {
+      showResultsModal(room);
     }
   }
 
@@ -1266,11 +1318,18 @@ document.addEventListener('DOMContentLoaded', () => {
     showBigBallPopup(result);
 
     updateCricketArenaUI(room);
+
+    // CRITICAL FIX: If match finished on this ball, display Results Modal with PLAY AGAIN button!
+    if (room.gamePhase === 'match_over') {
+      setTimeout(() => {
+        showResultsModal(room);
+      }, 2400);
+    }
   }
 
   function handleCricketToss(tossResult, winnerKey, winnerName, room) {
-    cricketTossButtons.style.display = 'none';
-    cricketTossDecisionButtons.style.display = 'flex';
+    SoundEngine.playDiceRoll();
+    updateCricketArenaUI(room);
   }
 
   // ========================================================
