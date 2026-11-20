@@ -221,6 +221,36 @@ class UserManager {
     return this.users.get((username || '').trim().toLowerCase()) || null;
   }
 
+  // Get user details or automatically create a persistent profile with starting coins
+  getOrCreateUser(username, defaultCoins = 1000) {
+    if (!username) return null;
+    const key = username.trim().toLowerCase();
+    let u = this.users.get(key);
+    if (!u) {
+      u = {
+        username: username.trim(),
+        password: '',
+        role: 'player',
+        coins: defaultCoins,
+        createdAt: Date.now(),
+        stats: {
+          matchesPlayed: 0,
+          matchesWon: 0,
+          matchesLost: 0,
+          cricketRuns: 0,
+          cricketWickets: 0,
+          snakeWins: 0,
+          ludoWins: 0,
+          coinsWon: 0,
+          coinsLost: 0
+        }
+      };
+      this.users.set(key, u);
+      this.save();
+    }
+    return u;
+  }
+
   // Update coin balance after matches
   adjustCoins(username, delta) {
     const u = this.users.get((username || '').trim().toLowerCase());

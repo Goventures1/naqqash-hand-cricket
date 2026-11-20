@@ -274,10 +274,15 @@ function handlePlayerForfeit(room, leaverSocketId) {
 // Distribute Bet Stake directly from Losers to Winners
 function resolvePlayerUsername(p) {
   if (!p) return null;
-  if (p.username && userManager.getUser(p.username)) return p.username;
-  if (p.name && userManager.getUser(p.name)) return p.name;
+  const raw = p.username || p.name;
+  if (raw && raw.trim()) {
+    const u = userManager.getOrCreateUser(raw.trim(), 1000);
+    return u ? u.username : null;
+  }
   const s = io.sockets.sockets.get(p.id);
-  if (s && s.user && s.user.username) return s.user.username;
+  if (s && s.user && s.user.username) {
+    return s.user.username;
+  }
   return null;
 }
 
@@ -310,12 +315,13 @@ function distributeMatchPot(room) {
           // Har harne walay player ke account se betting coins deduct honge
           let totalLostPot = 0;
           loseUsers.forEach(({ p, u }) => {
-            const userObj = userManager.getUser(u);
+            const userObj = userManager.getOrCreateUser(u, 1000);
             const toDeduct = Math.min(userObj ? userObj.coins : 0, stake);
             if (toDeduct > 0) {
               userManager.adjustCoins(u, -toDeduct);
               totalLostPot += toDeduct;
               io.emit('user_coins_changed', { username: u, coins: userManager.getUser(u).coins });
+              console.log(`💰 DEDUCTED ${toDeduct} coins from loser: ${u}`);
             }
           });
 
@@ -325,13 +331,19 @@ function distributeMatchPot(room) {
             if (share > 0) {
               userManager.adjustCoins(u, share);
               io.emit('user_coins_changed', { username: u, coins: userManager.getUser(u).coins });
+              console.log(`💰 ADDED ${share} coins to winner: ${u}`);
             }
+          });
+
+          // Accurate transfer records for visual wallet-to-wallet animation
+          loseUsers.forEach(({ p: lp, u: lu }, idx) => {
+            const winnerObj = winUsers[idx % winUsers.length];
             transfers.push({
-              fromName: loseTeam.name,
-              fromUsername: 'Losing Team',
-              toName: p.name || u,
-              toUsername: u,
-              amount: share
+              fromName: lp.name || lu,
+              fromUsername: lu,
+              toName: winnerObj.p.name || winnerObj.u,
+              toUsername: winnerObj.u,
+              amount: share > 0 ? share : stake
             });
           });
         }
@@ -692,6 +704,9 @@ io.on('connection', (socket) => {
     userRoomCode = code;
     socket.join(code);
 
+    const pRecord = userManager.getOrCreateUser(effectiveName, 1000);
+    socket.emit('user_coins_changed', { username: pRecord.username, coins: pRecord.coins });
+
     socket.emit('room_created', {
       room: getPublicRoomState(room),
       myRole: 'player',
@@ -762,6 +777,10 @@ io.on('connection', (socket) => {
 
     room.commentary.unshift(`👋 ${userObj.name} joined the room!`);
     io.to(code).emit('room_updated', { room: getPublicRoomState(room) });
+
+    const pRecord = userManager.getOrCreateUser(effectiveName, 1000);
+    socket.emit('user_coins_changed', { username: pRecord.username, coins: pRecord.coins });
+
     socket.emit('joined_successfully', {
       room: getPublicRoomState(room),
       myRole: role || 'player',
