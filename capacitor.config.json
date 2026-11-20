@@ -1,0 +1,9 @@
+{
+  "appId": "com.naqqash.handcricket",
+  "appName": "Naqqash",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

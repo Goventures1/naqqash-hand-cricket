@@ -3,6 +3,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const userManager = require('./userManager');
+const ludoEngine = require('./ludoEngine');
 
 const app = express();
 app.use(cors());
@@ -106,6 +108,8 @@ function getPublicRoomState(room) {
     hostId: room.hostId,
     gameType: room.gameType || 'snake', // 'snake', 'cricket', 'ludo'
     gamePhase: room.gamePhase, // 'lobby', 'playing', 'match_over', etc.
+    betAmount: room.betAmount || 0,
+    pot: room.pot || 0,
     spectators: room.spectators.map(s => ({ id: s.id, name: s.name, avatar: s.avatar })),
     commentary: room.commentary || [],
     createdAt: room.createdAt,
@@ -118,6 +122,7 @@ function getPublicRoomState(room) {
       players: room.players.map(p => ({
         id: p.id,
         name: p.name,
+        username: p.username,
         avatar: p.avatar,
         color: p.color,
         position: p.position,
@@ -141,10 +146,10 @@ function getPublicRoomState(room) {
     base.ludoState = room.ludoState || null;
   }
 
-  // Always include cricket fields so existing cricket clients don't crash
+  // Always include cricket fields
   base.team1 = {
     name: room.team1 ? room.team1.name : 'Team 1',
-    players: room.team1 ? room.team1.players.map(p => ({ id: p.id, name: p.name, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })) : [],
+    players: room.team1 ? room.team1.players.map(p => ({ id: p.id, name: p.name, username: p.username, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })) : [],
     score: room.team1 ? room.team1.score : 0,
     wickets: room.team1 ? room.team1.wickets : 0,
     overs: room.team1 ? room.team1.overs : 0,
@@ -152,7 +157,7 @@ function getPublicRoomState(room) {
   };
   base.team2 = {
     name: room.team2 ? room.team2.name : 'Team 2',
-    players: room.team2 ? room.team2.players.map(p => ({ id: p.id, name: p.name, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })) : [],
+    players: room.team2 ? room.team2.players.map(p => ({ id: p.id, name: p.name, username: p.username, score: p.score || 0, balls: p.balls || 0, isOut: !!p.isOut })) : [],
     score: room.team2 ? room.team2.score : 0,
     wickets: room.team2 ? room.team2.wickets : 0,
     overs: room.team2 ? room.team2.overs : 0,
@@ -186,7 +191,6 @@ function getActiveSnakePlayerId(room) {
 function advanceSnakeTurn(room) {
   const activePlayers = room.players.filter(p => !p.hasFinished);
   if (activePlayers.length <= 1) {
-    // If 1 or 0 players left, game over!
     if (activePlayers.length === 1) {
       const loser = activePlayers[0];
       loser.isLastLoser = true;
@@ -200,48 +204,171 @@ function advanceSnakeTurn(room) {
       room.commentary.unshift(`💀 ${loser.name} is THE LAST LOSER! Better luck next time!`);
     }
     room.gamePhase = 'match_over';
+    distributeMatchPot(room);
     return;
   }
   room.snakeState.turnIndex = (room.snakeState.turnIndex + 1) % activePlayers.length;
 }
 
+// Distribute Bet Pot to Winners
+function distributeMatchPot(room) {
+  if (!room.pot || room.pot <= 0) return;
+
+  if (room.gameType === 'cricket') {
+    if (!room.winner || room.winner.key === 'tie') {
+      // Refund bet to everyone
+      const allPlayers = [...room.team1.players, ...room.team2.players];
+      const refund = Math.floor(room.pot / Math.max(1, allPlayers.length));
+      allPlayers.forEach(p => {
+        if (p.username) userManager.adjustCoins(p.username, refund);
+      });
+      room.commentary.unshift(`💰 Match tied! Coins refunded to all players.`);
+    } else {
+      // Winning team divides pot equally!
+      const winTeam = room[room.winner.key];
+      if (winTeam && winTeam.players.length > 0) {
+        const sharePerPlayer = Math.floor(room.pot / winTeam.players.length);
+        winTeam.players.forEach(p => {
+          if (p.username) {
+            userManager.adjustCoins(p.username, sharePerPlayer);
+            userManager.recordMatch(p.username, { gameType: 'cricket', won: true });
+          }
+        });
+        const losingKey = room.winner.key === 'team1' ? 'team2' : 'team1';
+        const loseTeam = room[losingKey];
+        if (loseTeam) {
+          loseTeam.players.forEach(p => {
+            if (p.username) userManager.recordMatch(p.username, { gameType: 'cricket', won: false });
+          });
+        }
+        room.commentary.unshift(`💰 ${winTeam.name} members won ${sharePerPlayer} coins each from the pot!`);
+      }
+    }
+  } else if (room.gameType === 'snake') {
+    // 1st place winner takes all coins!
+    const champ = room.snakeState.winners && room.snakeState.winners[0];
+    if (champ) {
+      const winnerPlayer = room.players.find(p => p.id === champ.id);
+      if (winnerPlayer && winnerPlayer.username) {
+        userManager.adjustCoins(winnerPlayer.username, room.pot);
+        userManager.recordMatch(winnerPlayer.username, { gameType: 'snake', won: true });
+        room.commentary.unshift(`💰 1st Place Winner ${winnerPlayer.name} takes the entire pot of ${room.pot} coins!`);
+      }
+      room.players.forEach(p => {
+        if (p.username && (!winnerPlayer || p.username !== winnerPlayer.username)) {
+          userManager.recordMatch(p.username, { gameType: 'snake', won: false });
+        }
+      });
+    }
+  } else if (room.gameType === 'ludo') {
+    if (room.ludoState && room.ludoState.winner) {
+      const winnerPlayer = room.players.find(p => p.id === room.ludoState.winner.id);
+      if (winnerPlayer && winnerPlayer.username) {
+        userManager.adjustCoins(winnerPlayer.username, room.pot);
+        userManager.recordMatch(winnerPlayer.username, { gameType: 'ludo', won: true });
+        room.commentary.unshift(`💰 Ludo Champion ${winnerPlayer.name} takes the pot of ${room.pot} coins!`);
+      }
+    }
+  }
+
+  room.pot = 0;
+}
+
 // Socket Connection
 io.on('connection', (socket) => {
   let userRoomCode = null;
+  let currentUser = null; // { username, role, coins }
   console.log(`⚡ [${new Date().toLocaleTimeString()}] Client connected: ${socket.id}`);
 
-  // Auto-recovery / Reconnect
-  socket.on('reconnect_session', ({ roomCode, previousSocketId, playerName }) => {
-    roomCode = (roomCode || '').toUpperCase().trim();
-    const room = rooms.get(roomCode);
-    if (!room) return socket.emit('error_msg', 'Session expired. Please join again.');
+  // ========================================================
+  // AUTHENTICATION & ADMIN NAQQASH ACTIONS
+  // ========================================================
+  socket.on('auth_login', ({ username, password }) => {
+    const res = userManager.login(username, password);
+    if (!res.success) {
+      return socket.emit('auth_error', res.error);
+    }
+    currentUser = res.user;
+    socket.user = currentUser;
+    socket.emit('auth_success', { user: currentUser });
+    console.log(`🔑 Login successful: ${currentUser.username} (${currentUser.role})`);
+  });
 
-    // Look for previous player
-    const existingPlayer = room.players ? room.players.find(p => p.id === previousSocketId) : null;
-    if (existingPlayer) {
-      existingPlayer.id = socket.id;
-      if (room.hostId === previousSocketId) room.hostId = socket.id;
-      userRoomCode = roomCode;
-      socket.join(roomCode);
-      socket.emit('reconnected_successfully', { room: getPublicRoomState(room), myId: socket.id });
-      io.to(roomCode).emit('room_updated', { room: getPublicRoomState(room) });
-      return;
+  // Admin Naqqash creates player ID & password
+  socket.on('admin_create_user', ({ username, password, initialCoins }) => {
+    if (!currentUser || currentUser.username !== 'naqqash') {
+      return socket.emit('error_msg', 'Access Denied! Only Naqqash has Admin authority.');
+    }
+    const res = userManager.createUser('naqqash', { username, password, initialCoins });
+    if (!res.success) {
+      return socket.emit('error_msg', res.error);
+    }
+    socket.emit('admin_user_created', { user: res.user, allUsers: userManager.getAllUsers('naqqash') });
+  });
+
+  // Admin Naqqash allots coins to any user or himself
+  socket.on('admin_allot_coins', ({ targetUsername, amount }) => {
+    if (!currentUser || currentUser.username !== 'naqqash') {
+      return socket.emit('error_msg', 'Access Denied! Only Naqqash has Admin authority.');
+    }
+    const res = userManager.allotCoins('naqqash', { targetUsername, amount });
+    if (!res.success) {
+      return socket.emit('error_msg', res.error);
+    }
+    socket.emit('admin_coins_updated', {
+      targetUsername: res.username,
+      newCoins: res.newCoins,
+      allUsers: userManager.getAllUsers('naqqash')
+    });
+    // Broadcast coin update to target user if connected
+    io.emit('user_coins_changed', { username: res.username, coins: res.newCoins });
+  });
+
+  // Admin Naqqash lists all users
+  socket.on('admin_get_users', () => {
+    if (!currentUser || currentUser.username !== 'naqqash') {
+      return socket.emit('error_msg', 'Access Denied! Only Naqqash has Admin authority.');
+    }
+    socket.emit('admin_users_list', { users: userManager.getAllUsers('naqqash') });
+  });
+
+  // Get current user stats
+  socket.on('get_my_stats', () => {
+    if (!currentUser) return;
+    const u = userManager.getUser(currentUser.username);
+    if (u) {
+      socket.emit('my_stats', { stats: u.stats, coins: u.coins });
     }
   });
 
-  // 1. CREATE ROOM (Supports 'snake', 'cricket', 'ludo')
-  socket.on('create_room', ({ playerName, gameType, team1Name, team2Name, maxOvers, avatar }) => {
+  // ========================================================
+  // ROOM MANAGEMENT & BETTING
+  // ========================================================
+  socket.on('create_room', ({ playerName, gameType, team1Name, team2Name, maxOvers, avatar, betAmount }) => {
     const code = generateRoomCode();
     gameType = (gameType || 'snake').toLowerCase();
     const chosenAvatar = avatar || 'tiger';
     const playerColor = PLAYER_PALETTE[0];
+    const username = currentUser ? currentUser.username : playerName;
+    const stake = Math.max(0, parseInt(betAmount) || 0);
 
-    console.log(`🏠 Room CREATED: ${code} [${gameType.toUpperCase()}] by ${playerName || 'Anonymous'}`);
+    // If betting, verify coins
+    if (stake > 0 && currentUser) {
+      const u = userManager.getUser(currentUser.username);
+      if (!u || u.coins < stake) {
+        return socket.emit('error_msg', `Not enough coins to bet ${stake}! Your balance: ${u ? u.coins : 0} coins.`);
+      }
+      userManager.adjustCoins(currentUser.username, -stake);
+    }
+
+    console.log(`🏠 Room CREATED: ${code} [${gameType.toUpperCase()}] Bet: ${stake} by ${playerName || 'Anonymous'}`);
 
     const room = {
       code,
       gameType, // 'snake', 'cricket', 'ludo'
       hostId: socket.id,
+      betAmount: stake,
+      pot: stake > 0 ? stake : 0,
       createdAt: Date.now(),
       gamePhase: 'lobby',
       commentary: [`Room created! Welcome to ${gameType === 'snake' ? 'Snake & Ladders' : (gameType === 'ludo' ? 'Ludo Classic' : 'Hand Cricket')}!`],
@@ -251,11 +378,12 @@ io.on('connection', (socket) => {
       players: [
         {
           id: socket.id,
+          username,
           name: playerName || 'Player 1',
           avatar: chosenAvatar,
           color: playerColor,
-          position: 0, // 0 = locked in dugout
-          isLocked: true, // Needs a 1 to unlock!
+          position: 0,
+          isLocked: true,
           hasFinished: false,
           finishRank: null,
           isLastLoser: false,
@@ -274,10 +402,12 @@ io.on('connection', (socket) => {
         lastLoser: null,
         gameStartTime: null
       },
+      // Ludo state
+      ludoState: null,
       // Hand Cricket preserved state
       team1: {
         name: team1Name || 'Naqqash Tigers 🐯',
-        players: [{ id: socket.id, name: playerName || 'Player 1', score: 0, balls: 0, isOut: false }],
+        players: [{ id: socket.id, username, name: playerName || 'Player 1', score: 0, balls: 0, isOut: false }],
         score: 0,
         wickets: 0,
         balls: 0,
@@ -320,7 +450,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 2. JOIN ROOM (Up to 30 players)
   socket.on('join_room', ({ code, playerName, role, avatar }) => {
     code = (code || '').toUpperCase().trim();
     const room = rooms.get(code);
@@ -333,6 +462,19 @@ io.on('connection', (socket) => {
       return socket.emit('error_msg', 'Room is full (Maximum 30 players). You can join as a spectator!');
     }
 
+    const username = currentUser ? currentUser.username : playerName;
+    const stake = room.betAmount || 0;
+
+    // Check coins for bet if player
+    if (role !== 'spectator' && stake > 0 && currentUser) {
+      const u = userManager.getUser(currentUser.username);
+      if (!u || u.coins < stake) {
+        return socket.emit('error_msg', `Not enough coins to enter this room! Entry Bet: ${stake} coins. Your balance: ${u ? u.coins : 0}.`);
+      }
+      userManager.adjustCoins(currentUser.username, -stake);
+      room.pot += stake;
+    }
+
     userRoomCode = code;
     socket.join(code);
 
@@ -341,6 +483,7 @@ io.on('connection', (socket) => {
     const playerColor = PLAYER_PALETTE[colorIdx];
     const userObj = {
       id: socket.id,
+      username,
       name: playerName || `Cousin ${room.players.length + 1}`,
       avatar: chosenAvatar,
       color: playerColor,
@@ -359,7 +502,6 @@ io.on('connection', (socket) => {
       room.spectators.push({ id: socket.id, name: userObj.name, avatar: chosenAvatar });
     } else {
       room.players.push(userObj);
-      // For Cricket support
       if (room.gameType === 'cricket') {
         if (role === 'team2' || room.team1.players.length > room.team2.players.length) {
           room.team2.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
@@ -379,23 +521,20 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 3. START GAME (Host Only)
+  // Start Game
   socket.on('start_game', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room || room.hostId !== socket.id) return;
 
     if (room.gameType === 'snake') {
-      if (room.players.length < 1) {
-        return socket.emit('error_msg', 'Need at least 1 player to start!');
-      }
+      if (room.players.length < 1) return socket.emit('error_msg', 'Need at least 1 player to start!');
       room.gamePhase = 'playing';
       room.snakeState.turnIndex = 0;
       room.snakeState.gameStartTime = Date.now();
-      room.commentary.unshift('🎲 Game started! Everyone is LOCKED! Roll a 1 to enter the board!');
+      room.commentary.unshift('🎲 Game started! All players are LOCKED! Roll a 1 to enter the board!');
       io.to(userRoomCode).emit('snake_game_started', { room: getPublicRoomState(room) });
     } else if (room.gameType === 'cricket') {
-      // Trigger Cricket Toss
       room.gamePhase = 'toss';
       room.toss = {
         callingTeam: 'team2',
@@ -405,11 +544,16 @@ io.on('connection', (socket) => {
         decision: null
       };
       io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
+    } else if (room.gameType === 'ludo') {
+      room.gamePhase = 'playing';
+      room.ludoState = ludoEngine.createInitialState(room.players);
+      room.commentary.unshift('🎲 Classic Ludo started! Roll a 6 to bring tokens out!');
+      io.to(userRoomCode).emit('ludo_game_started', { room: getPublicRoomState(room) });
     }
   });
 
   // ========================================================
-  // SNAKE & LADDERS GAME ENGINE (SERVER-AUTHORITATIVE)
+  // SNAKE & LADDERS (STEP-BY-STEP PATH FOR SLOW SMOOTH HOPPING)
   // ========================================================
   socket.on('snake_roll_dice', () => {
     if (!userRoomCode) return;
@@ -424,41 +568,42 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === socket.id);
     if (!player || player.hasFinished) return;
 
-    // Generate random roll 1-6
     const roll = Math.floor(Math.random() * 6) + 1;
     player.totalRolls = (player.totalRolls || 0) + 1;
 
-    let eventType = 'normal'; // 'unlocked', 'stay_locked', 'ladder', 'snake', 'giant_99', 'bounce', 'win'
+    let eventType = 'normal';
     let prevPos = player.position;
     let newPos = prevPos;
     let bannerMsg = '';
+    let stepPath = []; // Array of intermediate squares for client to animate step-by-step!
 
-    // RULE 1: PLAYER LOCK SYSTEM
     if (player.isLocked) {
       if (roll === 1) {
-        // UNLOCKED!
         player.isLocked = false;
         player.position = 1;
         newPos = 1;
+        stepPath = [1];
         eventType = 'unlocked';
         bannerMsg = `🎉 ${player.name} rolled a 1 and UNLOCKED! Token enters Square 1!`;
         room.commentary.unshift(bannerMsg);
       } else {
-        // REMAINS LOCKED
         eventType = 'stay_locked';
         bannerMsg = `🔒 ${player.name} rolled a ${roll}! Needs a 1 to unlock.`;
         room.commentary.unshift(bannerMsg);
       }
     } else {
-      // PLAYER IS ACTIVE ON THE BOARD
       const targetPos = player.position + roll;
 
       if (targetPos > 100) {
-        // EXCEEDS 100: Stays in place!
         eventType = 'bounce';
         bannerMsg = `🎯 ${player.name} rolled a ${roll} but needs exact roll to reach 100! Stays at ${player.position}.`;
         room.commentary.unshift(bannerMsg);
       } else {
+        // Build sequential square-by-square path
+        for (let s = prevPos + 1; s <= targetPos; s++) {
+          stepPath.push(s);
+        }
+
         newPos = targetPos;
         player.position = newPos;
 
@@ -472,16 +617,15 @@ io.on('connection', (socket) => {
           newPos = ladderTop;
           room.commentary.unshift(bannerMsg);
         }
-        // Check Snake (Including Special Giant 99 Snake!)
+        // Check Snake & Titan 99
         else if (SNAKE_SNAKES[newPos]) {
           const snakeTail = SNAKE_SNAKES[newPos];
           player.snakesBitten = (player.snakesBitten || 0) + 1;
 
           if (newPos === 99) {
-            // SPECIAL HUGE 99 TITAN SNAKE!
             eventType = 'giant_99';
             player.hitGiant99 = true;
-            bannerMsg = `🐍💀 OH NO! ${player.name} landed on SQUARE 99! THE GIANT TITAN COBRA swallowed them down to ${snakeTail}!`;
+            bannerMsg = `🐍💀 OH NO! ${player.name} hit SQUARE 99! THE GIANT TITAN COBRA swallowed them down to ${snakeTail}!`;
           } else {
             eventType = 'snake';
             bannerMsg = `🐍 OUCH! ${player.name} got bitten by a snake at ${newPos} and slid down to ${snakeTail}!`;
@@ -491,7 +635,7 @@ io.on('connection', (socket) => {
           room.commentary.unshift(bannerMsg);
         }
 
-        // Check Exact 100: WINNER!
+        // Check Win 100
         if (player.position === 100) {
           player.hasFinished = true;
           const rank = room.snakeState.winners.length + 1;
@@ -510,7 +654,7 @@ io.on('connection', (socket) => {
           if (rank === 1) {
             room.winner = winObj;
             eventType = 'win';
-            bannerMsg = `🏆 CHAMPION! ${player.name} has reached 100 and WON 1st PLACE!`;
+            bannerMsg = `🏆 CHAMPION! ${player.name} reached 100 and WON 1st PLACE!`;
           } else {
             bannerMsg = `🎖️ ${player.name} finished in ${rank === 2 ? '2nd' : (rank === 3 ? '3rd' : `${rank}th`)} Place!`;
           }
@@ -528,15 +672,14 @@ io.on('connection', (socket) => {
       roll,
       prevPos,
       newPos: player.position,
+      stepPath, // Slow smooth hopping array
       eventType,
       bannerMsg
     };
     room.snakeState.lastEvent = eventType;
 
-    // Advance turn sequence to next active player
     advanceSnakeTurn(room);
 
-    // Broadcast result & updated board state
     io.to(userRoomCode).emit('snake_dice_rolled', {
       rollResult: room.snakeState.lastRoll,
       room: getPublicRoomState(room)
@@ -544,7 +687,55 @@ io.on('connection', (socket) => {
   });
 
   // ========================================================
-  // PRESERVED HAND CRICKET GAME ENGINE
+  // CLASSIC LUDO ENGINE EVENTS
+  // ========================================================
+  socket.on('ludo_roll_dice', () => {
+    if (!userRoomCode) return;
+    const room = rooms.get(userRoomCode);
+    if (!room || room.gameType !== 'ludo' || room.gamePhase !== 'playing' || !room.ludoState) return;
+
+    const res = ludoEngine.rollDice(room.ludoState, socket.id);
+    if (!res.success) return socket.emit('error_msg', res.error);
+
+    io.to(userRoomCode).emit('ludo_dice_rolled', {
+      roll: res.roll,
+      eligibleTokens: res.eligibleTokens,
+      room: getPublicRoomState(room)
+    });
+
+    // If no moves possible, pass turn after delay
+    if (res.eligibleTokens.length === 0) {
+      setTimeout(() => {
+        if (room && room.ludoState) {
+          ludoEngine.passTurn(room.ludoState);
+          io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
+        }
+      }, 1000);
+    }
+  });
+
+  socket.on('ludo_move_token', ({ tokenIndex }) => {
+    if (!userRoomCode) return;
+    const room = rooms.get(userRoomCode);
+    if (!room || room.gameType !== 'ludo' || room.gamePhase !== 'playing' || !room.ludoState) return;
+
+    const res = ludoEngine.moveToken(room.ludoState, socket.id, parseInt(tokenIndex));
+    if (!res.success) return socket.emit('error_msg', res.error);
+
+    if (res.winner) {
+      room.gamePhase = 'match_over';
+      room.winner = res.winner;
+      distributeMatchPot(room);
+    }
+
+    io.to(userRoomCode).emit('ludo_token_moved', {
+      moveResult: res,
+      room: getPublicRoomState(room)
+    });
+  });
+
+  // ========================================================
+  // HAND CRICKET ENGINE (BIG CLEAR POP-UPS & STATS)
   // ========================================================
   socket.on('switch_role', ({ newRole }) => {
     if (!userRoomCode) return;
@@ -568,7 +759,7 @@ io.on('connection', (socket) => {
       room.spectators.splice(inSpec, 1);
     }
 
-    const userObj = { id: socket.id, name: userName };
+    const userObj = { id: socket.id, name: userName, username: currentUser ? currentUser.username : userName };
     if (newRole === 'team1') room.team1.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
     else if (newRole === 'team2') room.team2.players.push({ ...userObj, score: 0, balls: 0, isOut: false });
     else {
@@ -578,16 +769,6 @@ io.on('connection', (socket) => {
 
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
     socket.emit('role_switched', { myRole: newRole });
-  });
-
-  socket.on('update_teams', ({ team1Name, team2Name, maxOvers }) => {
-    if (!userRoomCode) return;
-    const room = rooms.get(userRoomCode);
-    if (!room || room.hostId !== socket.id) return;
-    if (team1Name) room.team1.name = team1Name.trim();
-    if (team2Name) room.team2.name = team2Name.trim();
-    if (maxOvers) room.settings.maxOvers = parseInt(maxOvers) || 2;
-    io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
   });
 
   socket.on('start_toss', () => {
@@ -673,8 +854,6 @@ io.on('connection', (socket) => {
     const room = rooms.get(userRoomCode);
     if (!room || room.gameType !== 'cricket' || room.gamePhase !== 'playing') return;
 
-    const batTeam = room[room.battingTeamKey];
-    const bowlTeam = room[room.bowlingTeamKey];
     const batsman = room.currentBatsman;
     const bowler = room.currentBowler;
 
@@ -682,7 +861,7 @@ io.on('connection', (socket) => {
     const isBowler = bowler && bowler.id === socket.id;
 
     if (!isBatsman && !isBowler) {
-      return socket.emit('error_msg', 'Only active Batsman and Bowler can pick moves!');
+      return socket.emit('error_msg', 'Only the active Batsman and Bowler can pick moves!');
     }
 
     if (!room.pendingPicks) room.pendingPicks = { batMove: null, bowlMove: null };
@@ -712,21 +891,42 @@ io.on('connection', (socket) => {
     const isOut = batMove === bowlMove;
     let runs = 0;
     let commentaryMsg = '';
+    let popupTitle = '';
+    let popupDetail = '';
 
     if (isOut) {
       batTeam.wickets++;
       if (batsman) batsman.isOut = true;
+      popupTitle = '🔴 WICKET! OUT!';
+      popupDetail = `Both picked ${batMove}! ${batsman ? batsman.name : 'Batsman'} is OUT!`;
       commentaryMsg = `🔴 OUT! Both picked ${batMove}! ${batsman ? batsman.name : 'Batsman'} is OUT!`;
+      if (bowler && bowler.username) {
+        userManager.recordMatch(bowler.username, { gameType: 'cricket', won: false, wickets: 1 });
+      }
     } else {
       runs = batMove;
       batTeam.score += runs;
       if (batsman) {
         batsman.score = (batsman.score || 0) + runs;
         batsman.balls = (batsman.balls || 0) + 1;
+        if (batsman.username) {
+          userManager.recordMatch(batsman.username, { gameType: 'cricket', won: false, runs });
+        }
       }
-      commentaryMsg = runs === 6 ? `🔥 HUGE SIX! Thumbs up! +6 runs!` :
-                      runs === 10 ? `💥 MAXIMUM PUNCH! 10 RUNS BLAST!` :
-                      `⚡ ${batsman ? batsman.name : 'Batsman'} scored ${runs} run${runs > 1 ? 's' : ''}!`;
+
+      if (runs === 6) {
+        popupTitle = '🔥 HUGE SIX! (6)';
+        popupDetail = `Thumbs Up! Batsman: 6 | Bowler: ${bowlMove}`;
+        commentaryMsg = `🔥 HUGE SIX! Thumbs up! +6 runs!`;
+      } else if (runs === 10) {
+        popupTitle = '💥 MAXIMUM PUNCH! (10)';
+        popupDetail = `Fist Blast! Batsman: 10 | Bowler: ${bowlMove}`;
+        commentaryMsg = `💥 MAXIMUM PUNCH! 10 RUNS BLAST!`;
+      } else {
+        popupTitle = `⚡ ${runs} RUN${runs > 1 ? 'S' : ''}!`;
+        popupDetail = `Batsman: ${batMove} | Bowler: ${bowlMove}`;
+        commentaryMsg = `⚡ ${batsman ? batsman.name : 'Batsman'} scored ${runs} run${runs > 1 ? 's' : ''}!`;
+      }
     }
 
     batTeam.balls++;
@@ -736,7 +936,18 @@ io.on('connection', (socket) => {
       room.currentBowlerIndex++;
     }
 
-    room.lastBallResult = { batMove, bowlMove, isOut, runs, batsmanName: batsman ? batsman.name : '', bowlerName: bowler ? bowler.name : '' };
+    room.lastBallResult = {
+      batMove,
+      bowlMove,
+      isOut,
+      runs,
+      isSix: runs === 6,
+      isPunch: runs === 10,
+      popupTitle,
+      popupDetail,
+      batsmanName: batsman ? batsman.name : '',
+      bowlerName: bowler ? bowler.name : ''
+    };
     room.commentary.unshift(commentaryMsg);
 
     const allOut = batTeam.wickets >= batTeam.players.length;
@@ -763,6 +974,7 @@ io.on('connection', (socket) => {
         room.gamePhase = 'match_over';
         room.winner = { name: batTeam.name, key: room.battingTeamKey, margin: `${batTeam.players.length - batTeam.wickets} wickets` };
         room.commentary.unshift(`🏆 ${batTeam.name} WON THE MATCH by chasing the target!`);
+        distributeMatchPot(room);
       } else if (allOut || oversDone) {
         room.gamePhase = 'match_over';
         if (batTeam.score === room.target - 1) {
@@ -772,6 +984,7 @@ io.on('connection', (socket) => {
           room.winner = { name: bowlTeam.name, key: room.bowlingTeamKey, margin: `${(room.target - 1) - batTeam.score} runs` };
           room.commentary.unshift(`🏆 ${bowlTeam.name} WON THE MATCH by defending the target!`);
         }
+        distributeMatchPot(room);
       } else {
         if (isOut) updateCricketActivePlayers(room);
       }
@@ -783,13 +996,13 @@ io.on('connection', (socket) => {
     });
   }
 
-  // Reactions / Live Chat
+  // Live Chat Reaction
   socket.on('send_reaction', ({ emoji, senderName }) => {
     if (!userRoomCode) return;
     io.to(userRoomCode).emit('live_reaction', { emoji, senderName });
   });
 
-  // Rematch / Restart Match
+  // Rematch / Restart
   socket.on('restart_match', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
@@ -836,6 +1049,9 @@ io.on('connection', (socket) => {
       room.lastBallResult = null;
       room.pendingPicks = { batMove: null, bowlMove: null };
       room.commentary.unshift('🔄 Cricket match reset for a new match!');
+    } else if (room.gameType === 'ludo') {
+      room.ludoState = ludoEngine.createInitialState(room.players);
+      room.commentary.unshift('🔄 Classic Ludo reset for a new game!');
     }
 
     io.to(userRoomCode).emit('room_updated', { room: getPublicRoomState(room) });
@@ -866,14 +1082,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Disconnect
   socket.on('disconnect', () => {
     if (!userRoomCode) return;
     const room = rooms.get(userRoomCode);
     if (!room) return;
 
-    // Grace period for reconnect (keep player in list for temporary reloads)
-    // If room is empty, delete after 60s
     setTimeout(() => {
       const activeSockets = io.sockets.adapter.rooms.get(userRoomCode);
       if (!activeSockets || activeSockets.size === 0) {
