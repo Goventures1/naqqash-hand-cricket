@@ -1239,3 +1239,285 @@ body {
     width: 100%;
   }
 }
+
+
+/* ========================================================
+   CRICKET PROMINENT BATSMAN & BOWLER STAGE
+   ======================================================== */
+.cricket-players-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.cricket-player-card {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-lg);
+  padding: 16px 14px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.cricket-player-card.batsman-card {
+  border: 2px solid #38bdf8;
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.25);
+}
+
+.cricket-player-card.bowler-card {
+  border: 2px solid #f87171;
+  box-shadow: 0 0 25px rgba(248, 113, 113, 0.25);
+}
+
+.card-role-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.batsman-card .card-role-badge {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}
+
+.bowler-card .card-role-badge {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.card-player-name {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.card-player-stats {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.cricket-vs-badge {
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--text-muted);
+  min-width: 60px;
+}
+
+.picks-status-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin-top: 6px;
+}
+
+.hand-svg-container {
+  width: 140px;
+  height: 160px;
+  margin: 0 auto;
+}
+
+/* ========================================================
+   BIG BALL RESULT POPUP OVERLAY
+   ======================================================== */
+.ball-result-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.ball-result-card {
+  background: linear-gradient(145deg, #0b1120, #1e293b);
+  border: 2px solid var(--accent-cyan);
+  border-radius: var(--radius-xl);
+  padding: 30px 24px;
+  text-align: center;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.4);
+  animation: popInScale 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popInScale {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.ball-result-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: rgba(0, 240, 255, 0.2);
+  color: var(--accent-cyan);
+  margin-bottom: 12px;
+}
+
+.ball-result-title {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+.ball-result-sub {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 22px;
+}
+
+.ball-result-hands-comparison {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.pick-box {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  min-width: 110px;
+}
+
+.pick-box span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.pick-box b {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+.bat-pick {
+  border-color: #38bdf8;
+}
+
+.bowl-pick {
+  border-color: #f87171;
+}
+
+.compare-vs {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--accent-gold);
+}
+
+/* ========================================================
+   CLASSIC LUDO ARENA LAYOUT
+   ======================================================== */
+.ludo-arena-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .ludo-arena-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ludo-player-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  transition: all 0.2s;
+}
+
+.ludo-player-card.active-turn {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+.dice-badge-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.dice-num-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #1e293b;
+  border: 2px solid var(--accent-gold);
+  color: #facc15;
+  font-size: 1.6rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes ludoPulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.25); opacity: 0.2; }
+}
+
+.ludo-pulse-ring {
+  transform-origin: center;
+  animation: ludoPulse 0.9s infinite alternate;
+}
+
+/* ========================================================
+   ADMIN PANEL & USER DIRECTORY STYLING
+   ======================================================== */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-table th, .admin-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-table th {
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.admin-table tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}

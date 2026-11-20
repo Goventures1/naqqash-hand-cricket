@@ -42,6 +42,31 @@
         <span>ROOM:</span> <b id="roomCodeDisplay">-----</b>
       </div>
 
+      <!-- Coin Balance Pill -->
+      <div id="headerCoinsPill" class="status-pill" style="display: none; background: rgba(245, 158, 11, 0.15); border-color: #f59e0b; color: #fde68a;">
+        <span>💰</span> <b id="headerCoinsDisplay">0</b>
+      </div>
+
+      <!-- User Badge -->
+      <div id="headerUserBadge" class="status-pill" style="display: none; background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #e0f2fe;">
+        <span>👤</span> <b id="headerUsername">Player</b>
+      </div>
+
+      <!-- Login Button -->
+      <button id="headerLoginBtn" class="header-btn" style="border-color: #38bdf8; color: #38bdf8;">
+        <span>🔑</span> <span>LOGIN</span>
+      </button>
+
+      <!-- Admin Panel Button (Naqqash only) -->
+      <button id="headerAdminBtn" class="header-btn" style="display: none; border-color: #facc15; color: #facc15; background: rgba(250, 204, 21, 0.1);">
+        <span>👑</span> <span>ADMIN</span>
+      </button>
+
+      <!-- Stats Button -->
+      <button id="headerStatsBtn" class="header-btn" style="display: none;" title="My Career Stats">
+        <span>📊</span>
+      </button>
+
       <!-- Server Status Indicator -->
       <div id="connStatusPill" class="status-pill">
         <span style="font-size: 8px;">●</span> <span id="connStatusText">ONLINE</span>
@@ -52,6 +77,11 @@
 
       <!-- Server Config -->
       <button id="serverConfigBtn" class="header-btn" title="Server Settings">⚙️</button>
+
+      <!-- Logout Button -->
+      <button id="headerLogoutBtn" class="header-btn" style="display: none; border-color: #64748b; color: #94a3b8;" title="Logout">
+        <span>🚪</span>
+      </button>
     </div>
   </header>
 
@@ -132,7 +162,7 @@
           <div class="feature-tags">
             <span class="feature-tag">🖐️ Animated Hands</span>
             <span class="feature-tag">👊 10 Runs Punch</span>
-            <span class="feature-tag">👀 Live Spectator</span>
+            <span class="feature-tag">💰 Bet & Coins</span>
             <span class="feature-tag">🪙 Toss Simulation</span>
           </div>
           <button id="playCricketBtn" class="btn-primary-play">
@@ -149,7 +179,7 @@
           <h3>LUDO CLASSIC</h3>
           <p>The legendary cross-and-circle board game. Roll a 6 to bring tokens out, capture opponent tokens, and race to the central home!</p>
           <div class="feature-tags">
-            <span class="feature-tag">🔴 Red / 🟢 Green</span>
+            <span class="feature-tag">🔴 Red / 🟢 Green / 🟡 Yellow / 🔵 Blue</span>
             <span class="feature-tag">⭐ Safe Star Squares</span>
             <span class="feature-tag">⚔️ Token Capturing</span>
           </div>
@@ -178,7 +208,10 @@
       <div class="waiting-room-card">
         <div class="waiting-header">
           <div>
-            <span id="lobbyGameBadge" class="player-capacity-badge">SNAKE & LADDERS</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="lobbyGameBadge" class="player-capacity-badge">SNAKE & LADDERS</span>
+              <span id="lobbyBetBadge" class="player-capacity-badge" style="background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #fde68a; display: none;">💰 POT: 0</span>
+            </div>
             <h3 style="font-size: 1.4rem; margin-top: 6px;">MATCH WAITING ROOM</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted);">Share room code with cousins to join!</p>
           </div>
@@ -294,7 +327,7 @@
     </section>
 
     <!-- ========================================================
-         VIEW 3: HAND CRICKET ARENA (PRESERVED & RESTYLED)
+         VIEW 3: HAND CRICKET ARENA (LARGE PLAYERS & BIG POPUP)
          ======================================================== -->
     <section id="cricketGameView" class="view-section">
       <div class="cricket-card">
@@ -335,22 +368,27 @@
           </div>
         </div>
 
-        <!-- 2 Animated Hands Stage -->
-        <div id="cricketHandsStage" class="hands-stage">
-          <div style="text-align: center;">
-            <div style="font-size: 0.75rem; font-weight: 800; color: #38bdf8; margin-bottom: 6px;">
-              BATSMAN: <span id="cricketBatsmanName">Player 1</span>
-            </div>
-            <div id="batsmanHandMount" style="width: 140px; height: 160px;"></div>
+        <!-- LARGE PROMINENT BATSMAN & BOWLER STAGE -->
+        <div id="cricketHandsStage" class="cricket-players-stage">
+          <!-- Active Batsman -->
+          <div class="cricket-player-card batsman-card" id="batsmanCardWrapper">
+            <div class="card-role-badge">🏏 BATSMAN (بیٹنگ)</div>
+            <div class="card-player-name" id="cricketBatsmanName">Player 1</div>
+            <div class="card-player-stats" id="cricketBatsmanScoreDisplay">0 runs (0 balls)</div>
+            <div id="batsmanHandMount" class="hand-svg-container"></div>
           </div>
 
-          <div style="font-size: 1.5rem; font-weight: 900; color: var(--text-muted);">VS</div>
+          <div class="cricket-vs-badge">
+            <span>VS</span>
+            <div class="picks-status-badge" id="cricketPicksIndicator">Waiting for picks...</div>
+          </div>
 
-          <div style="text-align: center;">
-            <div style="font-size: 0.75rem; font-weight: 800; color: #f87171; margin-bottom: 6px;">
-              BOWLER: <span id="cricketBowlerName">Player 2</span>
-            </div>
-            <div id="bowlerHandMount" style="width: 140px; height: 160px;"></div>
+          <!-- Active Bowler -->
+          <div class="cricket-player-card bowler-card" id="bowlerCardWrapper">
+            <div class="card-role-badge">⚾ BOWLER (بولنگ)</div>
+            <div class="card-player-name" id="cricketBowlerName">Player 2</div>
+            <div class="card-player-stats" id="cricketBowlerOverDisplay">Over: 0.0</div>
+            <div id="bowlerHandMount" class="hand-svg-container"></div>
           </div>
         </div>
 
@@ -378,7 +416,82 @@
       </div>
     </section>
 
+    <!-- ========================================================
+         VIEW 4: CLASSIC LUDO ARENA
+         ======================================================== -->
+    <section id="ludoGameView" class="view-section">
+      <!-- Live Event Banner -->
+      <div id="ludoEventBanner" class="profile-card" style="border-color: #f59e0b; margin-bottom: 16px; padding: 12px 20px; display: flex; align-items: center; justify-content: center; text-align: center;">
+        <span id="ludoEventText" style="font-size: 0.95rem; font-weight: 800; color: #ffffff;">
+          🎲 Classic Ludo Match! Roll a 6 to bring tokens out!
+        </span>
+      </div>
+
+      <div class="ludo-arena-layout">
+        <!-- Board Column -->
+        <div class="board-container-card">
+          <div id="ludoBoardMount" style="width: 100%; display: flex; justify-content: center;"></div>
+
+          <!-- Controls Deck -->
+          <div class="dice-controls-card" style="margin-top: 14px;">
+            <div class="turn-announcer">
+              <div class="turn-title">CURRENT TURN</div>
+              <div class="turn-player-tag">
+                <span id="ludoTurnColorPill" class="player-capacity-badge" style="background: #ef4444; color: #fff;">RED</span>
+                <div id="ludoTurnName" class="turn-name">Player 1</div>
+              </div>
+            </div>
+
+            <div class="dice-badge-display">
+              <span style="font-size: 0.75rem; color: var(--text-muted);">DICE:</span>
+              <div id="ludoDiceResult" class="dice-num-box">-</div>
+            </div>
+
+            <button id="ludoRollBtn" class="btn-roll-dice">
+              <span>ROLL DICE 🎲</span>
+            </button>
+          </div>
+          <div id="ludoInstructionText" style="text-align: center; font-size: 0.85rem; color: #94a3b8; margin-top: 8px;">
+            Roll the dice to start! Need a 6 to bring tokens out of yard.
+          </div>
+        </div>
+
+        <!-- Ludo Players Panel -->
+        <div class="ludo-sidebar">
+          <div class="sidebar-panel">
+            <div class="panel-title-wrap">
+              <span class="panel-title">👥 PLAYERS & TOKENS</span>
+              <span class="player-capacity-badge">2 HOME TO WIN</span>
+            </div>
+            <div id="ludoPlayersStatus" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
+
+  <!-- ========================================================
+       BIG BALL RESULT POPUP OVERLAY (CRICKET RUNS / OUT)
+       ======================================================== -->
+  <div id="cricketBallPopup" class="ball-result-overlay" style="display: none;">
+    <div class="ball-result-card" id="ballResultCard">
+      <div class="ball-result-badge" id="ballResultBadge">BALL RESULT</div>
+      <div class="ball-result-title" id="ballResultTitle">🔥 HUGE SIX!</div>
+      <div class="ball-result-sub" id="ballResultSub">Batsman: 6 | Bowler: 4</div>
+      <div class="ball-result-hands-comparison">
+        <div class="pick-box bat-pick">
+          <span>🏏 Batsman</span>
+          <b id="popupBatMove">6</b>
+        </div>
+        <span class="compare-vs">⚡</span>
+        <div class="pick-box bowl-pick">
+          <span>⚾ Bowler</span>
+          <b id="popupBowlMove">4</b>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ========================================================
        RESULTS MODAL (WINNER PODIUM & THE LAST LOSER 💀)
@@ -409,6 +522,126 @@
   </div>
 
   <!-- ========================================================
+       MODAL: AUTHENTICATION / LOGIN
+       ======================================================== -->
+  <div id="loginModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>🔑 PLAYER LOGIN</h3>
+        <button id="closeLoginModalBtn" class="close-btn">&times;</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+        Enter your username and password provided by Admin Naqqash.
+      </p>
+      <div id="loginErrorMsg" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 12px;"></div>
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" id="loginUsernameInput" class="form-input" placeholder="e.g. naqqash or your username" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="loginPasswordInput" class="form-input" placeholder="Enter password..." />
+      </div>
+      <button id="submitLoginBtn" class="btn-primary-play" style="margin-top: 10px;">
+        LOGIN TO PLAY 🚀
+      </button>
+      <div style="margin-top: 12px; font-size: 0.75rem; color: #64748b; text-align: center;">
+        🔒 Note: Only Admin Naqqash can create accounts and allocate coins.
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL: ADMIN PANEL (NAQQASH ONLY 👑)
+       ======================================================== -->
+  <div id="adminModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 580px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.4rem;">👑</span>
+          <h3 style="color: #facc15;">NAQQASH ADMIN CONTROL</h3>
+        </div>
+        <button id="closeAdminModalBtn" class="close-btn">&times;</button>
+      </div>
+
+      <!-- Admin Tabs -->
+      <div style="display: flex; gap: 8px; margin: 16px 0; border-bottom: 1px solid #334155; padding-bottom: 8px;">
+        <button id="adminTabUsersBtn" class="header-btn" style="border-color: #38bdf8; color: #38bdf8;">👥 Users & Balances</button>
+        <button id="adminTabCreateBtn" class="header-btn">➕ Create User</button>
+        <button id="adminTabAllotBtn" class="header-btn">💰 Allot Coins</button>
+      </div>
+
+      <!-- Tab 1: All Users Directory -->
+      <div id="adminTabUsers">
+        <h4 style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 10px;">REGISTERED PLAYERS & COINS</h4>
+        <div id="adminUsersTableContainer" style="overflow-x: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Coins</th>
+                <th>Played</th>
+                <th>Won</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 2: Create User Form -->
+      <div id="adminTabCreate" style="display: none;">
+        <h4 style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 12px;">CREATE NEW PLAYER ACCOUNT</h4>
+        <div id="adminCreateUserErrorMsg" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 12px;"></div>
+        <div class="form-group">
+          <label class="form-label">New Username</label>
+          <input type="text" id="newUsernameInput" class="form-input" placeholder="e.g. ali, hamza, bilal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="text" id="newPasswordInput" class="form-input" placeholder="Set a secure password..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Starting Coins</label>
+          <input type="number" id="newInitialCoinsInput" class="form-input" value="1000" />
+        </div>
+        <button id="adminCreateUserSubmitBtn" class="btn-primary-play">CREATE PLAYER ID ➕</button>
+      </div>
+
+      <!-- Tab 3: Allot Coins -->
+      <div id="adminTabAllot" style="display: none;">
+        <h4 style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 12px;">ALLOT COINS TO USER / SELF</h4>
+        <div id="adminAllotErrorMsg" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 12px;"></div>
+        <div class="form-group">
+          <label class="form-label">Target Player Username</label>
+          <input type="text" id="allotTargetUserInput" class="form-input" placeholder="Enter username (or 'naqqash')" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Coins Amount (Positive to add, Negative to deduct)</label>
+          <input type="number" id="allotAmountInput" class="form-input" placeholder="e.g. 5000" />
+        </div>
+        <button id="adminAllotCoinsSubmitBtn" class="btn-primary-play" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+          TRANSFER COINS 💰
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MODAL: PLAYER STATS & CAREER
+       ======================================================== -->
+  <div id="statsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3>📊 CAREER STATISTICS</h3>
+        <button id="closeStatsModalBtn" class="close-btn">&times;</button>
+      </div>
+      <div id="statsContent" style="margin-top: 14px;"></div>
+    </div>
+  </div>
+
+  <!-- ========================================================
        MODAL: AVATAR PICKER
        ======================================================== -->
   <div id="avatarModal" class="modal-overlay" style="display: none;">
@@ -422,7 +655,7 @@
   </div>
 
   <!-- ========================================================
-       MODAL: ROOM CREATION
+       MODAL: ROOM CREATION (WITH BETTING STAKE)
        ======================================================== -->
   <div id="createRoomModal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
@@ -434,6 +667,22 @@
       <div class="form-group">
         <label class="form-label">Your Name</label>
         <input type="text" id="modalPlayerNameInput" class="form-input" placeholder="Your Name..." maxlength="15" />
+      </div>
+
+      <!-- Coin Betting Stake -->
+      <div class="form-group">
+        <label class="form-label">Match Bet / Coin Stake (سکے / شرط)</label>
+        <select id="betAmountSelect" class="form-input">
+          <option value="0">Friendly (Free / 0 Coins)</option>
+          <option value="100">100 Coins</option>
+          <option value="250">250 Coins</option>
+          <option value="500">500 Coins</option>
+          <option value="1000">1,000 Coins</option>
+          <option value="5000">5,000 Coins</option>
+        </select>
+        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+          Winner takes the pot! In team games, pot is divided equally among winning team members.
+        </div>
       </div>
 
       <!-- Cricket Options -->
@@ -487,6 +736,7 @@
   <script src="audio.js"></script>
   <script src="hands.js"></script>
   <script src="snake.js"></script>
+  <script src="ludo.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
