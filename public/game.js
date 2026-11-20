@@ -215,6 +215,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const popupBatMove = document.getElementById('popupBatMove');
   const popupBowlMove = document.getElementById('popupBowlMove');
 
+  // Cricket Arena Match Over & Innings Break
+  const cricketMatchOverCard = document.getElementById('cricketMatchOverCard');
+  const cricketWinnerTitle = document.getElementById('cricketWinnerTitle');
+  const cricketWinnerSub = document.getElementById('cricketWinnerSub');
+  const cricketArenaPlayAgainBtn = document.getElementById('cricketArenaPlayAgainBtn');
+  const cricketArenaHomeBtn = document.getElementById('cricketArenaHomeBtn');
+
+  const inningsBreakPopup = document.getElementById('inningsBreakPopup');
+  const inningsBreakTargetDisplay = document.getElementById('inningsBreakTargetDisplay');
+  const inningsBreakTeamText = document.getElementById('inningsBreakTeamText');
+  const dismissInningsBreakBtn = document.getElementById('dismissInningsBreakBtn');
+
   // Ludo Arena Elements
   const ludoBoardMount = document.getElementById('ludoBoardMount');
   const ludoRollBtn = document.getElementById('ludoRollBtn');
@@ -767,6 +779,17 @@ document.addEventListener('DOMContentLoaded', () => {
       handleCricketToss(tossResult, winnerKey, winnerName, room);
     });
 
+    s.on('innings_break', ({ target, newBattingTeam, newBowlingTeam, room }) => {
+      currentRoom = room;
+      handleInningsBreak(target, newBattingTeam, newBowlingTeam, room);
+    });
+
+    s.on('match_restarted', ({ room }) => {
+      currentRoom = room;
+      resetCricketArenaDOM();
+      updateRoomState(room);
+    });
+
     // Ludo events
     s.on('ludo_game_started', ({ room }) => {
       currentRoom = room;
@@ -1194,6 +1217,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cricketTossSection.style.display = 'block';
       cricketHandsStage.style.display = 'none';
       cricketPickSection.style.display = 'none';
+      if (cricketMatchOverCard) cricketMatchOverCard.style.display = 'none';
 
       const toss = room.toss || {};
       const tossPromptEl = document.getElementById('cricketTossPrompt');
@@ -1239,14 +1263,26 @@ document.addEventListener('DOMContentLoaded', () => {
           cricketTossDecisionButtons.style.display = 'none';
         }
       }
+    } else if (room.gamePhase === 'match_over') {
+      cricketTossSection.style.display = 'none';
+      cricketHandsStage.style.display = 'none';
+      cricketPickSection.style.display = 'none';
+
+      if (cricketMatchOverCard) {
+        cricketMatchOverCard.style.display = 'block';
+        if (cricketWinnerTitle) {
+          cricketWinnerTitle.textContent = room.winner ? `🏆 ${room.winner.name} WON THE MATCH!` : '🏆 MATCH OVER!';
+        }
+        if (cricketWinnerSub) {
+          cricketWinnerSub.textContent = room.winner ? (room.winner.margin || 'Victory!') : '';
+        }
+      }
+      showResultsModal(room);
     } else {
       cricketTossSection.style.display = 'none';
+      if (cricketMatchOverCard) cricketMatchOverCard.style.display = 'none';
       cricketHandsStage.style.display = 'flex';
       cricketPickSection.style.display = 'block';
-    }
-
-    if (room.gamePhase === 'match_over') {
-      showResultsModal(room);
     }
   }
 
@@ -1303,23 +1339,23 @@ document.addEventListener('DOMContentLoaded', () => {
   chooseBowlBtn.addEventListener('click', () => { if (socket) socket.emit('choose_toss_decision', { decision: 'bowl' }); });
 
   function handleCricketBall(result, room) {
-    if (typeof HandRenderer !== 'undefined') {
+    if (typeof HandRenderer !== 'undefined' && result) {
       batsmanHandMount.innerHTML = HandRenderer.getHandSVG(result.batMove, 'batsman', true);
       bowlerHandMount.innerHTML = HandRenderer.getHandSVG(result.bowlMove, 'bowler', true);
     }
 
-    if (result.isOut) {
+    if (result && result.isOut) {
       SoundEngine.playOutWhistle();
     } else {
       SoundEngine.playBatShot();
     }
 
     // Trigger Big Ball Result Popup!
-    showBigBallPopup(result);
+    if (result) showBigBallPopup(result);
 
     updateCricketArenaUI(room);
 
-    // CRITICAL FIX: If match finished on this ball, display Results Modal with PLAY AGAIN button!
+    // If match finished on this ball, display Results Modal with PLAY AGAIN button!
     if (room.gamePhase === 'match_over') {
       setTimeout(() => {
         showResultsModal(room);
@@ -1330,6 +1366,61 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleCricketToss(tossResult, winnerKey, winnerName, room) {
     SoundEngine.playDiceRoll();
     updateCricketArenaUI(room);
+  }
+
+  function handleInningsBreak(target, newBattingTeam, newBowlingTeam, room) {
+    if (inningsBreakTargetDisplay) inningsBreakTargetDisplay.textContent = `${target} RUNS`;
+    if (inningsBreakTeamText) inningsBreakTeamText.textContent = `Ab ${newBattingTeam} ki BATTING shuru ho gayi hai!`;
+    if (inningsBreakPopup) inningsBreakPopup.style.display = 'flex';
+
+    if (batsmanHandMount) batsmanHandMount.innerHTML = '<div style="color: #64748b; font-size: 0.9rem; padding: 25px 0;">New Batsman Ready...</div>';
+    if (bowlerHandMount) bowlerHandMount.innerHTML = '<div style="color: #64748b; font-size: 0.9rem; padding: 25px 0;">New Bowler Ready...</div>';
+    if (cricketPicksIndicator) cricketPicksIndicator.textContent = 'Waiting for picks...';
+
+    SoundEngine.playDiceRoll();
+
+    setTimeout(() => {
+      if (inningsBreakPopup) inningsBreakPopup.style.display = 'none';
+    }, 3200);
+
+    updateCricketArenaUI(room);
+  }
+
+  function resetCricketArenaDOM() {
+    if (batsmanHandMount) batsmanHandMount.innerHTML = '<div style="color: #64748b; font-size: 0.9rem; padding: 25px 0;">Ready for move...</div>';
+    if (bowlerHandMount) bowlerHandMount.innerHTML = '<div style="color: #64748b; font-size: 0.9rem; padding: 25px 0;">Ready for move...</div>';
+    if (cricketBatsmanScoreDisplay) cricketBatsmanScoreDisplay.textContent = '0 runs (0 balls)';
+    if (cricketBowlerOverDisplay) cricketBowlerOverDisplay.textContent = 'Over: 0.0';
+    if (cricketPicksIndicator) cricketPicksIndicator.textContent = 'Waiting for picks...';
+    if (cricketBallPopup) cricketBallPopup.style.display = 'none';
+    if (gameResultsModal) gameResultsModal.style.display = 'none';
+    if (cricketMatchOverCard) cricketMatchOverCard.style.display = 'none';
+    if (inningsBreakPopup) inningsBreakPopup.style.display = 'none';
+    if (coinTransferOverlay) coinTransferOverlay.style.display = 'none';
+    if (cricketCommentaryText) cricketCommentaryText.textContent = 'Match starting!';
+  }
+
+  if (dismissInningsBreakBtn) {
+    dismissInningsBreakBtn.addEventListener('click', () => {
+      if (inningsBreakPopup) inningsBreakPopup.style.display = 'none';
+    });
+  }
+
+  if (cricketArenaPlayAgainBtn) {
+    cricketArenaPlayAgainBtn.addEventListener('click', () => {
+      resetCricketArenaDOM();
+      if (socket && currentRoom) {
+        socket.emit('restart_match');
+      }
+    });
+  }
+
+  if (cricketArenaHomeBtn) {
+    cricketArenaHomeBtn.addEventListener('click', () => {
+      if (socket && currentRoom) socket.emit('leave_room');
+      currentRoom = null;
+      showView('homeScreen');
+    });
   }
 
   // ========================================================
@@ -1429,6 +1520,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   playAgainBtn.addEventListener('click', () => {
     gameResultsModal.style.display = 'none';
+    resetCricketArenaDOM();
     if (socket && currentRoom) {
       socket.emit('restart_match');
     }
@@ -1436,6 +1528,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   returnHomeBtn.addEventListener('click', () => {
     gameResultsModal.style.display = 'none';
+    resetCricketArenaDOM();
     if (socket && currentRoom) socket.emit('leave_room');
     currentRoom = null;
     showView('homeScreen');

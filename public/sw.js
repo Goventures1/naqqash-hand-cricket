@@ -1,4 +1,4 @@
-const CACHE_NAME = 'naqqash-arena-v4';
+const CACHE_NAME = 'naqqash-arena-v5';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
